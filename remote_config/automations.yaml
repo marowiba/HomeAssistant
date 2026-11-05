@@ -1,0 +1,931 @@
+- id: '1729024545464'
+  alias: Küchenlicht an
+  description: Wandschalter Küche & Wohnzimmer Taste a1 (links oben)
+  triggers:
+  - device_id: 823e4d5fd48bc7a4dd563bdea3b2db21
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_1
+    trigger: device
+  - device_id: fa015dea921e83323c54195d29bc1915
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_1
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_on
+    device_id: fa5a7c2d57b1c0e43cc341b1587202e3
+    entity_id: 84afdf7b4a1f772b7416a529d845f197
+    domain: switch
+  mode: single
+- id: '1729056506757'
+  alias: Küchenlicht aus
+  description: Wandschalter Küche & Wohnzimmer Taste a0 (links unten)
+  triggers:
+  - device_id: 823e4d5fd48bc7a4dd563bdea3b2db21
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_2
+    trigger: device
+  - device_id: fa015dea921e83323c54195d29bc1915
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_2
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_off
+    device_id: fa5a7c2d57b1c0e43cc341b1587202e3
+    entity_id: 84afdf7b4a1f772b7416a529d845f197
+    domain: switch
+  mode: single
+- id: '1729056760099'
+  alias: Licht Wohnzimmer EG an
+  description: Wandschalter Küche & Wohnzimmer Taste b1 (rechts oben)
+  triggers:
+  - device_id: 823e4d5fd48bc7a4dd563bdea3b2db21
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_3
+    trigger: device
+  - device_id: fa015dea921e83323c54195d29bc1915
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_3
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_on
+    device_id: c6d0ef59353430828d8ab28f517a2f08
+    entity_id: 9ec3f0c6a263c0429f7e85d0a2f4e7c9
+    domain: switch
+  - type: turn_on
+    device_id: 2c089b9da437c5a34a29e041feaa78a6
+    entity_id: 6fcc3b82246f5ad36c8c22243fc63a68
+    domain: switch
+  - type: turn_on
+    device_id: 7007458007730660cb4b17b7143da906
+    entity_id: bd0a683b12ff0f0c65c3b98d62de5b87
+    domain: switch
+  mode: single
+- id: '1729056939511'
+  alias: Licht Wohnzimmer EG aus
+  description: Wandschalter Küche & Wohnzimmer Taste b0 (rechts unten)
+  triggers:
+  - device_id: 823e4d5fd48bc7a4dd563bdea3b2db21
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_4
+    trigger: device
+  - device_id: fa015dea921e83323c54195d29bc1915
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_4
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_off
+    device_id: c6d0ef59353430828d8ab28f517a2f08
+    entity_id: 9ec3f0c6a263c0429f7e85d0a2f4e7c9
+    domain: switch
+  - type: turn_off
+    device_id: 2c089b9da437c5a34a29e041feaa78a6
+    entity_id: 6fcc3b82246f5ad36c8c22243fc63a68
+    domain: switch
+  - type: turn_off
+    device_id: 7007458007730660cb4b17b7143da906
+    entity_id: bd0a683b12ff0f0c65c3b98d62de5b87
+    domain: switch
+  mode: single
+- id: '1729102541304'
+  alias: Beleuchtung Fassade an
+  description: Schaltet die Beleuchtung an der Fassade an, sobald die Sonne untergeht.
+  triggers:
+  - trigger: sun
+    event: sunset
+    offset: 00:30:00
+  - trigger: sun
+    event: sunrise
+    offset: -01:00:00
+  conditions: []
+  actions:
+  - parallel:
+    - type: turn_on
+      device_id: 103bb69a48828187e53d05c1ebce2965
+      entity_id: 7f252db35294dca1e2f3d1c1ba0ed534
+      domain: switch
+    - type: turn_on
+      device_id: fdb232892bd9241f15f6169c4d2807c7
+      entity_id: 2b6f1dd9906ffcf350c51d1dfa4a6519
+      domain: switch
+  mode: single
+- id: '1729102616420'
+  alias: Beleuchtung Fassade aus
+  description: Schaltet die Beleuchtung an der Fassade aus, sobald die Sonne aufgeht.
+  triggers:
+  - trigger: time
+    at: '23:00:00'
+  - trigger: sun
+    event: sunrise
+  conditions: []
+  actions:
+  - parallel:
+    - type: turn_off
+      device_id: 103bb69a48828187e53d05c1ebce2965
+      entity_id: 7f252db35294dca1e2f3d1c1ba0ed534
+      domain: switch
+    - type: turn_off
+      device_id: fdb232892bd9241f15f6169c4d2807c7
+      entity_id: 2b6f1dd9906ffcf350c51d1dfa4a6519
+      domain: switch
+  mode: single
+- id: '1729167445176'
+  alias: Licht Wohnzimmer UG umschalten
+  description: Wandschalter Taste b1 (rechts oben)
+  triggers:
+  - device_id: 264150dd37aab64430566ceed650df35
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_3
+    trigger: device
+  conditions: []
+  actions:
+  - type: toggle
+    device_id: 34c5f49e0f2ca81b48114bf41a827618
+    entity_id: c5ddf9e67972a9202febf9997ae38928
+    domain: switch
+  mode: single
+- id: '1729167654873'
+  alias: Multimedia Wohnzimmer UG umschalten
+  description: Wandschalter Taste b1 (rechts unten)
+  triggers:
+  - device_id: 264150dd37aab64430566ceed650df35
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_4
+    trigger: device
+  conditions: []
+  actions:
+  - type: toggle
+    device_id: e910ca3183461f002cb4995bfef3a66f
+    entity_id: b40ea5b1af6fcea5f2bb89424c710c8f
+    domain: switch
+  mode: single
+- id: '1729170910799'
+  alias: 'Licht Büro Matthias umschalten '
+  description: Wandschalter Taste a1 (links oben)
+  triggers:
+  - device_id: 264150dd37aab64430566ceed650df35
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_1
+    trigger: device
+  conditions: []
+  actions:
+  - type: toggle
+    device_id: ac209775f909765c9a2379a932aa6922
+    entity_id: e33bce069eea628f54b885eebe617a4d
+    domain: switch
+  mode: single
+- id: '1729170987634'
+  alias: Computer-Anlage umschalten
+  description: Wandschalter Taste a0 (links unten)
+  triggers:
+  - device_id: 264150dd37aab64430566ceed650df35
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_2
+    trigger: device
+  conditions: []
+  actions:
+  - type: toggle
+    device_id: f1c7cdd19f9f8945eb0d7866c195bcf9
+    entity_id: 70258456217f461ab771403f1e5d872e
+    domain: switch
+  mode: single
+- id: '1729820098435'
+  alias: Nach Hause kommen
+  description: Lampen EG ein, wenn Auto nach Hause kommt (1 Std nach Sonnenuntergang
+    bis 1 Std vor Sonnenaufgang)
+  triggers:
+  - device_id: 41641e46fc6de5e7bef79b3255194997
+    domain: device_tracker
+    entity_id: ff03134a2487162060ff79573bb192fa
+    type: enters
+    trigger: device
+    zone: zone.home
+  conditions:
+  - condition: sun
+    after: sunset
+    after_offset: 01:00:00
+    before: sunrise
+    before_offset: -01:00:00
+  actions:
+  - type: turn_on
+    device_id: c6d0ef59353430828d8ab28f517a2f08
+    entity_id: 9ec3f0c6a263c0429f7e85d0a2f4e7c9
+    domain: switch
+  - type: turn_on
+    device_id: 2c089b9da437c5a34a29e041feaa78a6
+    entity_id: 6fcc3b82246f5ad36c8c22243fc63a68
+    domain: switch
+  - type: turn_on
+    device_id: 7007458007730660cb4b17b7143da906
+    entity_id: bd0a683b12ff0f0c65c3b98d62de5b87
+    domain: switch
+  - type: turn_on
+    device_id: fa5a7c2d57b1c0e43cc341b1587202e3
+    entity_id: 84afdf7b4a1f772b7416a529d845f197
+    domain: switch
+  mode: single
+- id: '1729856429229'
+  alias: Deckenlicht Lounge an
+  description: Wandschalter Taste a1 (links oben)
+  triggers:
+  - device_id: 55ee40197cfd3ac7cc71f39968d6438f
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_1
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_on
+    device_id: 631b32fe1cf496d98b414110a5e42b23
+    entity_id: 94fd6c50aae6336d5630206c24057c58
+    domain: switch
+  mode: single
+- id: '1729856598656'
+  alias: Licht Lounge aus
+  description: Wandschalter Taste a0 (links unten)
+  triggers:
+  - device_id: 55ee40197cfd3ac7cc71f39968d6438f
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_2
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_off
+    device_id: 631b32fe1cf496d98b414110a5e42b23
+    entity_id: 94fd6c50aae6336d5630206c24057c58
+    domain: switch
+  mode: single
+- id: '1729857399847'
+  alias: Licht Büro Stefaniya aus
+  description: Wandschalter Taste a0 (links unten)
+  triggers:
+  - device_id: ee26db7c778f292567bdf9cc5ae3e600
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_2
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_off
+    device_id: 647794463b16bdb4937548bbb6ed7ffc
+    entity_id: cea059aeb6a5c884ae00af8f16d3180a
+    domain: switch
+  mode: single
+- id: '1729857444974'
+  alias: Licht Büro Stefaniya an
+  description: Wandschalter Taste a1 (links oben)
+  triggers:
+  - device_id: ee26db7c778f292567bdf9cc5ae3e600
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_1
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_on
+    device_id: 647794463b16bdb4937548bbb6ed7ffc
+    entity_id: cea059aeb6a5c884ae00af8f16d3180a
+    domain: switch
+  mode: single
+- id: '1729877854785'
+  alias: EG alles aus
+  description: Wandschalter Taste a0 (links unten)
+  triggers:
+  - device_id: 823e4d5fd48bc7a4dd563bdea3b2db21
+    domain: zha
+    type: remote_button_long_press
+    subtype: button_2
+    trigger: device
+  - device_id: fa015dea921e83323c54195d29bc1915
+    domain: zha
+    type: remote_button_long_press
+    subtype: button_2
+    trigger: device
+  conditions: []
+  actions:
+  - parallel:
+    - type: turn_off
+      device_id: c6d0ef59353430828d8ab28f517a2f08
+      entity_id: 9ec3f0c6a263c0429f7e85d0a2f4e7c9
+      domain: switch
+    - type: turn_off
+      device_id: 2c089b9da437c5a34a29e041feaa78a6
+      entity_id: 6fcc3b82246f5ad36c8c22243fc63a68
+      domain: switch
+    - type: turn_off
+      device_id: 7007458007730660cb4b17b7143da906
+      entity_id: bd0a683b12ff0f0c65c3b98d62de5b87
+      domain: switch
+    - type: turn_off
+      device_id: fa5a7c2d57b1c0e43cc341b1587202e3
+      entity_id: 84afdf7b4a1f772b7416a529d845f197
+      domain: switch
+  mode: single
+- id: '1731850651991'
+  alias: Terrasse UG aus (Lounge)
+  description: Wandschalter Taste a0 (links unten)
+  triggers:
+  - device_id: 55ee40197cfd3ac7cc71f39968d6438f
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_4
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_off
+    device_id: a1e0b017e2d742bc01f75d86e4684ca5
+    entity_id: db985005be5445cf374bab6a46bd3496
+    domain: switch
+  mode: single
+- id: '1731850690300'
+  alias: Terrasse UG an (Lounge)
+  description: Wandschalter Taste a1 (links oben)
+  triggers:
+  - device_id: 55ee40197cfd3ac7cc71f39968d6438f
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_3
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_on
+    device_id: a1e0b017e2d742bc01f75d86e4684ca5
+    entity_id: db985005be5445cf374bab6a46bd3496
+    domain: switch
+  mode: single
+- id: '1731850821581'
+  alias: Terrasse UG aus (Büro Stefaniya)
+  description: Wandschalter Taste a0 (links unten)
+  triggers:
+  - device_id: ee26db7c778f292567bdf9cc5ae3e600
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_4
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_off
+    device_id: a1e0b017e2d742bc01f75d86e4684ca5
+    entity_id: db985005be5445cf374bab6a46bd3496
+    domain: switch
+  mode: single
+- id: '1731850868886'
+  alias: Terrasse UG an (Büro Stefaniya)
+  description: Wandschalter Taste a1 (links oben)
+  triggers:
+  - device_id: ee26db7c778f292567bdf9cc5ae3e600
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_3
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_on
+    device_id: a1e0b017e2d742bc01f75d86e4684ca5
+    entity_id: db985005be5445cf374bab6a46bd3496
+    domain: switch
+  mode: single
+- id: '1731852536007'
+  alias: Terrasse EG an
+  description: ''
+  triggers:
+  - device_id: d3edf359246767d6510726db9bcc8775
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_3
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_on
+    device_id: 499ed080f6dacac050e222e80b1a0927
+    entity_id: c5999b655ca6953ff6fdf9a8ee41b6f1
+    domain: switch
+  mode: single
+- id: '1731852632542'
+  alias: Terrasse EG aus
+  description: ''
+  triggers:
+  - device_id: d3edf359246767d6510726db9bcc8775
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_4
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_off
+    device_id: 499ed080f6dacac050e222e80b1a0927
+    entity_id: c5999b655ca6953ff6fdf9a8ee41b6f1
+    domain: switch
+  mode: single
+- id: '1732212310138'
+  alias: Wohnzimmer EG Stehlampe 1 umschalten
+  description: ''
+  triggers:
+  - device_id: d3edf359246767d6510726db9bcc8775
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_1
+    trigger: device
+  conditions: []
+  actions:
+  - type: toggle
+    device_id: c6d0ef59353430828d8ab28f517a2f08
+    entity_id: 9ec3f0c6a263c0429f7e85d0a2f4e7c9
+    domain: switch
+  mode: single
+- id: '1732212414060'
+  alias: Wohnzimmer EG Multimedia umschalten
+  description: ''
+  triggers:
+  - device_id: d3edf359246767d6510726db9bcc8775
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_2
+    trigger: device
+  conditions: []
+  actions:
+  - type: toggle
+    device_id: abc204d6a331dbf0ce58b481bdf005ed
+    entity_id: 37ce2b4d7d02c6e979ef4baa0b2f459e
+    domain: switch
+  mode: single
+- alias: Lampe 1 Stunde nach Abenddämmerung einschalten
+  trigger:
+  - platform: sun
+    event: sunset
+    offset: +01:00:00
+  action:
+  - service: switch.turn_on
+    target:
+      entity_id: switch.stehlampe_1_schalter
+  id: 9d8322c3462f4d65abef33f8b8f1a769
+- alias: Lampe um 23 Uhr ausschalten, wenn TV aus
+  trigger:
+  - platform: time
+    at: '23:00:00'
+  condition:
+  - condition: state
+    entity_id: media_player.tv_samsung_led48
+    state: 'off'
+  action:
+  - service: switch.turn_off
+    target:
+      entity_id: switch.stehlampe_1_schalter
+  id: 9c50cc47e8a045ef8b346d1d5e93130b
+- alias: Lampe einschalten, wenn TV eingeschaltet wird und nach Abenddämmerung
+  trigger:
+  - platform: state
+    entity_id: media_player.tv_samsung_led48
+    to: 'on'
+  condition:
+  - condition: sun
+    after: sunset
+  action:
+  - service: switch.turn_on
+    target:
+      entity_id: switch.stehlampe_1_schalter
+  id: 15aa0787e9434a33b5b8a6b6d10de4aa
+- alias: Lampe nach 23 Uhr ausschalten, wenn TV ausgeschaltet wird
+  trigger:
+  - platform: state
+    entity_id: media_player.tv_samsung_led48
+    to: 'off'
+  condition:
+  - condition: time
+    after: '23:00:00'
+  action:
+  - service: switch.turn_off
+    target:
+      entity_id: switch.stehlampe_1_schalter
+  id: 26e99cbf392d4f4c822cfb21afe7521b
+- id: '1733662507917'
+  alias: Somneo Licht an und aus
+  description: ''
+  triggers:
+  - id: licht_an
+    at: '22:00:00'
+    trigger: time
+  - id: licht_aus
+    at: 01:00:00
+    trigger: time
+  conditions: []
+  actions:
+  - choose:
+    - conditions:
+      - condition: trigger
+        id: licht_an
+      sequence:
+      - target:
+          device_id: 198dc6cba07a812acc434ee0a5c74b48
+        action: light.turn_on
+        data:
+          brightness_pct: 100
+    - conditions:
+      - condition: trigger
+        id: licht_aus
+      sequence:
+      - target:
+          device_id: 198dc6cba07a812acc434ee0a5c74b48
+        action: light.turn_off
+        data: {}
+  mode: single
+- id: '1734554585761'
+  alias: WZ EG und Flur warm aktivieren
+  description: ''
+  triggers:
+  - entity_id: input_boolean.wohnzimmer_eg_und_flur_tagsuber
+    from: 'off'
+    to: 'on'
+    trigger: state
+  conditions: []
+  actions:
+  - target:
+      entity_id: switch.userdefinedstate_matthias_ho
+    action: switch.turn_on
+  mode: single
+- id: '1734555726075'
+  alias: WZ EG und Flur kalt aktivieren
+  description: ''
+  triggers:
+  - entity_id: input_boolean.wohnzimmer_eg_und_flur_tagsuber
+    from: 'on'
+    to: 'off'
+    trigger: state
+  conditions: []
+  actions:
+  - target:
+      entity_id: switch.userdefinedstate_matthias_unterwegs
+    action: switch.turn_on
+  mode: single
+- id: '1734556636904'
+  alias: Helfer Wohnzimmer EG und Flur tagsüber einschalten
+  description: ''
+  triggers:
+  - entity_id: switch.userdefinedstate_matthias_unterwegs
+    to: 'off'
+    trigger: state
+  conditions: []
+  actions:
+  - target:
+      entity_id: input_boolean.wohnzimmer_eg_und_flur_tagsuber
+    action: input_boolean.turn_on
+    data: {}
+  mode: single
+- id: '1734556784300'
+  alias: Helfer Wohnzimmer EG und Flur tagsüber ausschalten
+  description: ''
+  triggers:
+  - entity_id: switch.userdefinedstate_matthias_unterwegs
+    to: 'off'
+    trigger: state
+  conditions: []
+  actions:
+  - target:
+      entity_id: input_boolean.wohnzimmer_eg_und_flur_tagsuber
+    action: input_boolean.turn_off
+  mode: single
+- id: b1a4754f55cf41b8970c892209db9220
+  alias: Synchronisiere Temperatur-Offset Schlafzimmer
+  description: Automatisierung zur Anpassung des Offsets basierend auf den Sensorwerten.
+  triggers:
+  - entity_id:
+    - sensor.somneo_temperature
+    - sensor.raumth_schlafzimmer_temperature
+    trigger: state
+  conditions:
+  - condition: template
+    value_template: '{{ states(''sensor.somneo_temperature'') | float != states(''sensor.raumth_schlafzimmer_temperature'')
+      | float }}
+
+      '
+  actions:
+  - target:
+      entity_id: number.raumth_schlafzimmer_offset
+    data:
+      value: "{{ (states('number.raumth_schlafzimmer_offset') | float + \n   (states('sensor.somneo_temperature')
+        | float - states('sensor.raumth_schlafzimmer_temperature') | float)) | round(2)
+        }}\n"
+    action: number.set_value
+  mode: single
+- id: '1734992269932'
+  alias: Matthias im Home Office
+  description: ''
+  triggers:
+  - entity_id:
+    - input_boolean.matthias_im_home_office
+    to: 'on'
+    trigger: state
+  conditions: []
+  actions:
+  - target:
+      entity_id:
+      - input_number.soll_temperatur
+    data:
+      value: 21.5
+    action: input_number.set_value
+  mode: single
+- id: '1734992907452'
+  alias: 'Matthias nicht im Home Office '
+  description: ''
+  triggers:
+  - entity_id:
+    - input_boolean.matthias_im_home_office
+    trigger: state
+    to: 'off'
+  conditions: []
+  actions:
+  - target:
+      entity_id:
+      - input_number.soll_temperatur
+    data:
+      value: 19.5
+    action: input_number.set_value
+  mode: single
+- id: '1735021540883'
+  alias: Stehlampe 1 morgens an (Mo–Fr, wenn noch dunkel)
+  triggers:
+  - at: 06:30:00
+    trigger: time
+  conditions:
+  - condition: time
+    weekday:
+    - mon
+    - tue
+    - wed
+    - thu
+    - fri
+  - condition: sun
+    before: sunrise
+  actions:
+  - target:
+      entity_id: switch.stehlampe_1_schalter
+    action: switch.turn_on
+  mode: single
+- id: 4691ea2da0f34a4e9b349efab0a7a4eb
+  alias: Heizung Büro Matthias Automatisierung
+  description: Schaltet die Heizung ein oder aus basierend auf der Temperatur und
+    den eingestellten Zeithelfern
+  triggers:
+  - entity_id: sensor.thermometer_buro_matthias_temperatur
+    trigger: state
+  - entity_id: input_number.soll_temperatur
+    trigger: state
+  - entity_id: input_datetime.heizung_buro_matthias_an
+    trigger: state
+  - entity_id: input_datetime.heizung_buro_matthias_aus
+    trigger: state
+  - minutes: /5
+    trigger: time_pattern
+  conditions: []
+  actions:
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: "{{ now() >= today_at(states('input_datetime.heizung_buro_matthias_an'))
+          and\n   now() <  today_at(states('input_datetime.heizung_buro_matthias_aus'))
+          }}\n"
+      sequence:
+      - choose:
+        - conditions:
+          - condition: template
+            value_template: "{{ states('sensor.thermometer_buro_matthias_temperatur')
+              | float(0)\n   < states('input_number.soll_temperatur') | float(0) }}\n"
+          sequence:
+          - target:
+              entity_id: switch.heizung_buro_matthias
+            action: switch.turn_on
+        - conditions:
+          - condition: template
+            value_template: "{{ states('sensor.thermometer_buro_matthias_temperatur')
+              | float(0)\n   >= states('input_number.soll_temperatur') | float(0)
+              }}\n"
+          sequence:
+          - target:
+              entity_id: switch.heizung_buro_matthias
+            action: switch.turn_off
+    - conditions:
+      - condition: template
+        value_template: "{{ not (\n   now() >= today_at(states('input_datetime.heizung_buro_matthias_an'))
+          and\n   now() <  today_at(states('input_datetime.heizung_buro_matthias_aus'))\n)
+          }}\n"
+      sequence:
+      - target:
+          entity_id: switch.heizung_buro_matthias
+        action: switch.turn_off
+  mode: single
+- id: lounge_offset_sync_stefaniya
+  alias: Synchronisiere Temperatur-Offset Lounge (Stefaniya)
+  description: 'Setzt den Bosch-Offset absolut korrekt basierend auf der Differenz
+    zwischen Sonoff (Master) und Bosch (Slave-Anzeige).
+
+    '
+  trigger:
+  - platform: state
+    entity_id:
+    - sensor.thermometer_buro_stefaniya_temperatur
+    - sensor.raumth_lounge_temperature
+  condition:
+  - condition: template
+    value_template: '{% set master = states(''sensor.thermometer_buro_stefaniya_temperatur'')
+      | float(999) %} {% set slave  = states(''sensor.raumth_lounge_temperature'')
+      | float(999) %} {% set current_offset = states(''number.raumth_lounge_offset'')
+      | float(999) %}
+
+      {{ master != 999 and slave != 999 and current_offset != (slave - master) }}
+
+      '
+  action:
+  - service: number.set_value
+    target:
+      entity_id: number.raumth_lounge_offset
+    data:
+      value: '{% set master = states(''sensor.thermometer_buro_stefaniya_temperatur'')
+        | float(0) %} {% set slave  = states(''sensor.raumth_lounge_temperature'')
+        | float(0) %}
+
+        {% set offset = master - slave %}
+
+        {# Begrenzen auf Bosch-Grenzen #} {% set limited = [5.0, [-5.0, offset] |
+        max] | min %}
+
+        {# Auf 0.1-Schritte runden #} {{ (limited / 0.1) | round(0) * 0.1 }}
+
+        '
+  mode: single
+- id: lounge_heizen_master_toggle
+  alias: UG Lounge Heizen basierend auf Master-Ist (Büro Stefaniya) und Bosch-Soll
+    (Lounge) Toggle Skript
+  trigger:
+  - platform: state
+    entity_id: sensor.thermometer_buro_stefaniya_temperatur
+  - platform: state
+    entity_id: climate.raumkl_lounge
+  - platform: time_pattern
+    minutes: /5
+    seconds: 30
+  action:
+  - variables:
+      ist: '{{ states(''sensor.thermometer_buro_stefaniya_temperatur'') | float }}'
+      soll: '{{ state_attr(''climate.raumkl_lounge'', ''temperature'') | float }}'
+      preset: '{{ state_attr(''climate.raumkl_lounge'', ''preset_mode'') }}'
+      mode: '{{ states(''climate.raumkl_lounge'') }}'
+  - choose:
+    - conditions: '{{ mode != ''auto'' }}'
+      sequence:
+      - service: climate.set_hvac_mode
+        target:
+          entity_id: climate.raumkl_lounge
+        data:
+          hvac_mode: auto
+  - choose:
+    - conditions: '{{ ist < soll and preset != ''none'' }}'
+      sequence:
+      - service: climate.set_preset_mode
+        target:
+          entity_id: climate.raumkl_lounge
+        data:
+          preset_mode: none
+    default:
+    - choose:
+      - conditions: '{{ ist >= soll and preset != ''eco'' }}'
+        sequence:
+        - service: climate.set_preset_mode
+          target:
+            entity_id: climate.raumkl_lounge
+          data:
+            preset_mode: eco
+  mode: single
+- id: '1768423840938'
+  alias: Lounge Heizung – Master-driven Control (final)
+  triggers:
+  - seconds: /30
+    trigger: time_pattern
+  conditions:
+  - '{{ ist > 0 and soll > 0 }}
+
+    '
+  actions:
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ delta < -0.3 and current_mode != ''heat'' }}'
+      sequence:
+      - target:
+          entity_id: climate.raumkl_lounge
+        data:
+          hvac_mode: heat
+        action: climate.set_hvac_mode
+    - conditions:
+      - condition: template
+        value_template: '{{ delta > 0.3 and current_mode != ''auto'' }}'
+      sequence:
+      - target:
+          entity_id: climate.raumkl_lounge
+        data:
+          hvac_mode: auto
+        action: climate.set_hvac_mode
+  mode: single
+  variables:
+    ist: '{{ states(''sensor.thermometer_buro_stefaniya_temperatur'') | float(0) }}'
+    soll: '{{ state_attr(''climate.raumkl_lounge'', ''temperature'') | float(0) }}'
+    delta: '{{ ist - soll }}'
+    current_mode: '{{ state_attr(''climate.raumkl_lounge'', ''hvac_mode'') or states(''climate.raumkl_lounge'')
+      }}'
+- id: '1768497596890'
+  alias: Synchronisiere Temperatur-Offset Lounge
+  description: Automatisierung zur Anpassung des Offsets basierend auf den Sensorwerten.
+  triggers:
+  - entity_id:
+    - sensor.thermometer_buro_stefaniya_temperatur
+    - sensor.raumth_lounge_temperature
+    trigger: state
+  conditions:
+  - condition: template
+    value_template: "{{ states('sensor.thermometer_buro_stefaniya_temperatur') | float
+      !=\n   states('sensor.raumth_lounge_temperature') | float }}\n"
+  actions:
+  - target:
+      entity_id:
+      - number.raumth_lounge_offset
+    data:
+      value: "{{ (states('number.raumth_lounge_offset') | float +\n    (states('sensor.thermometer_buro_stefaniya_temperatur')
+        | float -\n     states('sensor.raumth_lounge_temperature') | float)) | round(2)
+        }}\n"
+    action: number.set_value
+  mode: single
+- id: '1769418946831'
+  alias: Stehlampe 1 morgens aus (Mo–Fr)
+  description: ''
+  triggers:
+  - event: sunrise
+    trigger: sun
+  - at: 08:30:00
+    trigger: time
+  conditions:
+  - condition: time
+    weekday:
+    - mon
+    - tue
+    - wed
+    - thu
+    - fri
+  actions:
+  - target:
+      entity_id: switch.stehlampe_1_schalter
+    action: switch.turn_off
+  mode: single
+- id: '1793646697253'
+  alias: Heizung Büro Matthias Automatisierung Dynamisch
+  triggers:
+  - at: sensor.heizung_startzeit_berechnet_buro_matthias
+    trigger: time
+  - at: sensor.heizung_stoppzeit_berechnet_buro_matthias
+    trigger: time
+  - entity_id: sensor.thermometer_buro_matthias_temperatur
+    trigger: state
+  - entity_id: input_number.soll_temperatur
+    trigger: state
+  conditions: []
+  actions:
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{% set now_time = now().strftime(''%H:%M:%S'') %} {% set
+          start_time = states(''sensor.heizung_startzeit_berechnet_buro_matthias'')
+          %} {% set stop_time = states(''sensor.heizung_stoppzeit_berechnet_buro_matthias'')
+          %} {{ start_time <= now_time <= stop_time }}'
+      - condition: template
+        value_template: '{{ states(''sensor.thermometer_buro_matthias_temperatur'')
+          | float(0) < states(''input_number.soll_temperatur'') | float(0) }}'
+      sequence:
+      - target:
+          entity_id: switch.heizung_buro_matthias
+        action: switch.turn_on
+    - conditions:
+      - condition: template
+        value_template: '{% set absenk_temp = 17.5 %} {{ states(''sensor.thermometer_buro_matthias_temperatur'')
+          | float(0) < absenk_temp }}'
+      sequence:
+      - target:
+          entity_id: switch.heizung_buro_matthias
+        action: switch.turn_on
+    default:
+    - target:
+        entity_id: switch.heizung_buro_matthias
+      action: switch.turn_off

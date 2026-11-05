@@ -1,0 +1,76 @@
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+
+# Includes
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+########################################
+# Template-Sensoren (MODERNE SYNTAX)
+########################################
+template:
+  - sensor:
+  
+      - name: "Lounge Bosch IST korrigiert"
+        unique_id: lounge_bosch_ist_korrigiert
+        unit_of_measurement: "°C"
+        state: >
+          {% set bosch = states('sensor.raumth_lounge_temperature') | float(0) %}
+          {% set offset = states('number.raumth_lounge_offset') | float(0) %}
+          {{ (bosch - offset) | round(2) }}
+
+        # Temperatur-Differenzen
+      - name: "Temperaturdifferenz Schlafzimmer (Somneo ↔ Raumthermostat)"
+        unit_of_measurement: "°C"
+        state: >
+          {{
+            (
+              states('sensor.somneo_temperature') | float(0)
+              - states('sensor.raumth_schlafzimmer_temperature') | float(0)
+            ) | round(1)
+          }}
+
+      - name: "Temperaturdifferenz Lounge (Büro Stefaniya ↔ Raumthermostat)"
+        unit_of_measurement: "°C"
+        state: >
+          {{
+            (
+              states('sensor.thermometer_buro_stefaniya_temperatur') | float(0)
+              - states('sensor.raumth_lounge_temperature') | float(0)
+            ) | round(1)
+          }}
+
+      # Uhrzeit mit Sekunden (modern)
+      - default_entity_id: sensor.custom_time_seconds
+        name: "Uhrzeit mit Sekunden"
+        state: "{{ now().strftime('%H:%M:%S') }}"
+
+      # Wochentag (modern)
+      - default_entity_id: sensor.custom_weekday
+        name: "Wochentag"
+        state: >
+          {% set days = {
+            'Monday': 'Montag',
+            'Tuesday': 'Dienstag',
+            'Wednesday': 'Mittwoch',
+            'Thursday': 'Donnerstag',
+            'Friday': 'Freitag',
+            'Saturday': 'Samstag',
+            'Sunday': 'Sonntag'
+          } %}
+          {{ days[now().strftime('%A')] }}
+
+########################################
+# Zeit- und Datumsinformationen
+########################################
+sensor:
+  - platform: time_date
+    display_options:
+      - 'time'
+      - 'date'
+      - 'date_time'
