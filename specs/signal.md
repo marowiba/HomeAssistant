@@ -9,6 +9,9 @@ Home-Office-Status: per Chat ein- oder ausschalten.
 Dieses Dokument beschreibt nur das Design. Es werden hier weder Dienste
 installiert noch Home-Assistant-Konfigurationen oder Server geändert.
 
+Die konkrete, abarbeitbare Umsetzung des ersten Schritts (Empfangsdienst auf
+`srv001`, HAD-0001) ist in `specs/signal_solution_design.md` beschrieben.
+
 ## Vorgeschlagene Architektur
 
 Ein kleiner Signal-zu-Home-Assistant-Dienst läuft auf dem Ubuntu-Server

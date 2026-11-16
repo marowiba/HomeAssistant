@@ -1,0 +1,37 @@
+[Unit]
+Description=signal-cli daemon (Signal-Empfang)
+Documentation=file:///opt/signal-cli/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=signal-cli
+Group=signal-cli
+EnvironmentFile=/etc/signal-cli/signal-cli.env
+Environment=JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64
+ExecStart=/opt/signal-cli/bin/signal-cli --config /var/lib/signal-cli \
+          -a ${SIGNAL_ACCOUNT} daemon --http=127.0.0.1:8080 --no-receive-stdout
+Restart=always
+RestartSec=10
+StateDirectory=signal-cli
+UMask=0077
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
