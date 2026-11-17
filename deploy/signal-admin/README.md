@@ -1,10 +1,13 @@
 # Signal-Administration (HAD-0008)
 
 Reine Server-Webanwendung auf `srv001` zur Verwaltung der Signal-Integration.
-Erreichbar unter `http://signal-admin.srv001` (bzw.
-`http://signal-admin.srv001.fritz.box`), nur im lokalen Netzwerk. Keine
+Erreichbar unter `http://srv001:8090/` (optional per hosts-Eintrag auch
+`http://signal-admin.srv001/`), nur im lokalen Netzwerk. Keine
 Desktop-Installation, keine Internetveroeffentlichung, keine eingehende
 Portfreigabe.
+
+Die Anwenderdokumentation steht in
+[`docs/signal-admin-benutzerhandbuch.md`](../../docs/signal-admin-benutzerhandbuch.md).
 
 ## Architektur
 

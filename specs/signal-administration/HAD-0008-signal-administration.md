@@ -1,5 +1,7 @@
 # HAD-0008: Geschützte Webanwendung zur Signal-Administration
 
+Anwenderdokumentation: [`docs/signal-admin-benutzerhandbuch.md`](../../docs/signal-admin-benutzerhandbuch.md).
+
 ## Ziel
 
 Eine reine Server-Webanwendung auf `srv001`, die authentifizierten
