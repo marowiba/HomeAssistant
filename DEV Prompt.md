@@ -6,6 +6,20 @@ Das aktive Ticket wird in `backlog.md` unter `## 🟡 IN PROGRESS` geführt.
 Ticket-ID und Beschreibung sind vor Arbeitsbeginn zu prüfen; der Umfang des
 Tickets ist verbindlich.
 
+## Dokumentstruktur
+
+- `backlog.md` führt offene und laufende Tickets, `backlog_done.md` die
+  erledigten.
+- `specs/<epic>/` enthält die Designs, ein Unterordner pro Epic. Der Ordnername
+  entspricht der Spalte `Feature` in `backlog.md` in Kleinschreibung, Umlaute
+  transliteriert (`ä` zu `ae`, `ö` zu `oe`, `ü` zu `ue`, `ß` zu `ss`).
+- `specs/dashboards/` ist eine dokumentierte Ausnahme ohne Feature im Backlog.
+- `specs/<epic>/design.md` ist das Epic-Design,
+  `specs/<epic>/HAD-xxxx-<thema>.md` das Solution Design je Ticket.
+- `deploy/<dienst>/` enthält systemd-Units und Konfigurationsvorlagen.
+- Querverweise immer mit vollständigem Pfad ab Repository-Wurzel.
+- Bei Widersprüchen gilt: Ticket vor Solution Design vor Epic-Design.
+
 ## Workflow
 
 1. Ticket in `backlog.md` nach `## 🟡 IN PROGRESS` verschieben und Status

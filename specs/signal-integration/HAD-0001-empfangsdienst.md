@@ -7,13 +7,14 @@
 | Ticket | HAD-0001 (siehe `backlog.md`) |
 | Feature / Epic | Signal-Integration |
 | Priorität | High |
-| Übergreifendes Design | `specs/signal.md` |
+| Übergreifendes Design | `specs/signal-integration/design.md` |
 | Dokumenttyp | Solution Design, umsetzungsbegleitend |
 | Status | Entwurf, noch nicht umgesetzt |
 | Gültig für | ausschließlich den Empfangsdienst; keine Befehlsauswertung |
 
 Dieses Dokument beschreibt die konkrete Umsetzung von HAD-0001. Es ändert das
-übergreifende Design in `specs/signal.md` nicht und ersetzt es nicht. Bei
+übergreifende Design in `specs/signal-integration/design.md` nicht und ersetzt
+es nicht. Bei
 Widersprüchen gilt das Ticket in `backlog.md`, danach dieses Dokument.
 
 ## Ziel
@@ -110,7 +111,7 @@ sequenceDiagram
 | :--- | :--- | :--- |
 | E1 | Eigener Systembenutzer `signal-cli` ohne Login-Shell und ohne `sudo` | Rechtebegrenzung; Kompromittierung des Dienstes darf keine Root-Rechte ergeben |
 | E2 | Eigener Benutzer ist **nicht** dasselbe wie das Signal-Konto | Linux-Identität und Messenger-Identität sind getrennte Konzepte |
-| E3 | `daemon`-Modus statt periodischem `receive` | Anforderung ist ereignisbasierter Empfang ohne Cronjob (siehe `specs/signal.md`) |
+| E3 | `daemon`-Modus statt periodischem `receive` | Anforderung ist ereignisbasierter Empfang ohne Cronjob (siehe `specs/signal-integration/design.md`) |
 | E4 | Lokaler Zugriff über `127.0.0.1:8080`, nicht über öffentliche Bindung | Der Port kann Nachrichten senden und ist damit ein privilegierter Kanal |
 | E5 | Nummer in `EnvironmentFile`, nicht im Unit-File oder Repository | Telefonnummer ist personenbezogen; Trennungsprinzip Konfiguration und Dokumentation |
 | E6 | `Restart=always` mit `RestartSec=10` | Erfüllt Autostart und deckt zusätzlich Abstürze und Netzausfälle ab |

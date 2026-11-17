@@ -1,0 +1,91 @@
+# Signal-Bridge (HAD-0002)
+
+Dienst, der den Ereignisstrom des `signal-cli`-Daemons liest, Absender gegen eine
+Allowlist prüft und jede eingegangene Nachricht in ein lokales Protokoll
+schreibt. Es wird nichts ausgewertet und nichts an Home Assistant weitergeleitet.
+
+Die Begründung, die Schritte B0 bis B5 und die Verifikationsmatrix stehen in
+`specs/signal-integration/HAD-0002-allowlist-und-chatlog.md`.
+
+## Inhalt
+
+| Datei | Zweck |
+| :--- | :--- |
+| `bridge.py` | Dienst, nur Standardbibliothek |
+| `config.example.json` | Vorlage für `/etc/signal-bridge/config.json` |
+| `tests/test_bridge.py` | Unit-Tests |
+
+## Voraussetzungen
+
+- HAD-0001 abgeschlossen, `signal-cli`-Daemon aktiv
+- `GET http://127.0.0.1:8080/api/v1/events` erreichbar
+- Python 3.11 oder neuer
+
+## Installation
+
+```bash
+sudo install -d -o root -g root -m 0755 /opt/signal-bridge
+sudo install -o root -g root -m 0644 bridge.py /opt/signal-bridge/bridge.py
+
+sudo install -d -o root -g signal-cli -m 0750 /etc/signal-bridge
+sudo install -o root -g signal-cli -m 0640 config.example.json /etc/signal-bridge/config.json
+sudoedit /etc/signal-bridge/config.json
+
+sudo install -o root -g root -m 0644 ../deploy/signal-bridge/signal-bridge.service \
+     /etc/systemd/system/signal-bridge.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now signal-bridge.service
+```
+
+## Konfiguration
+
+| Feld | Bedeutung |
+| :--- | :--- |
+| `events_url` | Ereignisstrom des Daemons, Standard `http://127.0.0.1:8080/api/v1/events` |
+| `log_path` | Protokolldatei, Standard `/var/lib/signal-bridge/messages.jsonl` |
+| `retention_days` | Aufbewahrungsfrist in Tagen |
+| `timezone` | Zeitzone für den lesbaren Zeitstempel, z. B. `Europe/Berlin` |
+| `read_timeout_seconds` | Timeout beim Lesen des Stroms |
+| `reconnect_delay_seconds` | Wartezeit vor erneutem Verbinden |
+| `prune_interval_seconds` | Abstand der Aufbewahrungsbereinigung |
+| `allowlist` | Liste der freigegebenen Absender |
+
+Ein Allowlist-Eintrag braucht `label` und mindestens eines von `number` oder
+`uuid`. Ist eine `uuid` gesetzt, muss sie übereinstimmen; eine abweichende UUID
+blockiert den Absender auch dann, wenn die Nummer passt. Damit erbt eine neu
+vergebene Rufnummer keine Rechte.
+
+## Protokoll
+
+JSON Lines, ein Objekt pro Zeile:
+
+```json
+{"ts":"2026-11-16T14:25:51+01:00","received_ms":1794820723054,"sender_number":"+49XXXXXXXXXX","sender_uuid":"0929926d-1816-4157-9e5f-f57862547f66","sender_name":"Matthias","text":"Test Had","attachments":0,"decision":"allowed","reason":"allowlist","matched_label":"Matthias"}
+```
+
+`decision` ist `allowed` oder `blocked`, `reason` ist `allowlist`,
+`not_in_allowlist` oder `sender_disabled`.
+
+## Betrieb
+
+```bash
+systemctl status signal-bridge.service
+sudo -u signal-cli tail -n 20 /var/lib/signal-bridge/messages.jsonl
+sudo -u signal-cli grep '"decision":"blocked"' /var/lib/signal-bridge/messages.jsonl
+python3 /opt/signal-bridge/bridge.py --config /etc/signal-bridge/config.json --check-config
+```
+
+`--dry-run` gibt Einträge auf stdout aus, statt sie zu schreiben.
+
+## Tests
+
+```bash
+python -m unittest discover -s signal-bridge/tests -v
+```
+
+## Rechte
+
+Die Logdatei entsteht mit `0640`, das Verzeichnis mit `0750`, beides in der
+Gruppe `signal-cli`. Administratoren, die das Protokoll lesen sollen, werden
+dieser Gruppe hinzugefügt. Das Protokoll enthält Nachrichteninhalte und ist
+deshalb wie personenbezogene Daten zu behandeln.

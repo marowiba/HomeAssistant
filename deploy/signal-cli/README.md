@@ -2,7 +2,7 @@
 
 Vorlagen für den dauerhaft laufenden `signal-cli`-Empfangsdienst auf `srv001`.
 Die vollständige Begründung, die Schritte S0 bis S5 und die Verifikationsmatrix
-stehen in `specs/signal_solution_design.md`.
+stehen in `specs/signal-integration/HAD-0001-empfangsdienst.md`.
 
 ## Inhalt
 

@@ -1,0 +1,17 @@
+{
+  "events_url": "http://127.0.0.1:8080/api/v1/events",
+  "log_path": "/var/lib/signal-bridge/messages.jsonl",
+  "retention_days": 30,
+  "timezone": "Europe/Berlin",
+  "read_timeout_seconds": 300,
+  "reconnect_delay_seconds": 5,
+  "prune_interval_seconds": 3600,
+  "allowlist": [
+    {
+      "label": "Matthias",
+      "number": "+49XXXXXXXXXX",
+      "uuid": "00000000-0000-0000-0000-000000000000",
+      "enabled": true
+    }
+  ]
+}

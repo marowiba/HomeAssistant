@@ -8,3 +8,5 @@ home-assistant_v2.db
 !.env.example
 *.env
 !*.env.example
+__pycache__/
+*.pyc
