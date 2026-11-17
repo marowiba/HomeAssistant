@@ -29,8 +29,10 @@ Portfreigabe.
   `prev_hash` und `entry_hash`.
 - **E6:** Feste Kommandos (`HO M an`, `HO M aus`, `HO M Status`) sind eine
   geschlossene Liste. Die App kann sie nur ein-/ausschalten, nicht ersetzen.
-- **E7:** Bindung standardmäßig an `127.0.0.1`; LAN-Betrieb über
-  `SIGNAL_ADMIN_HOST` und Firewall.
+- **E7:** Bindung an `127.0.0.1:8090`; nginx auf Port 80 leitet
+  `signal-admin.srv001` als Reverse-Proxy weiter.
+- **E8:** Der Dienst läuft als Benutzer `signal-cli`, damit er die
+  Bridge-Konfiguration und das Ereignislog lesen und schreiben kann.
 
 ## Module
 

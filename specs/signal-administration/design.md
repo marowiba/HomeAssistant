@@ -15,8 +15,10 @@ keine Internetveröffentlichung, keine eingehende Portfreigabe.
 - SQLite-Datenbank für Benutzer, Sitzungen, Audit-Log und Einstellungen.
 - Liest und schreibt die Bridge-Konfiguration (`config.json`) und das
   Ereignislog (`messages.jsonl`).
-- Bindet standardmäßig an `127.0.0.1`; der Betrieb bindet an die LAN-Adresse
-  und beschränkt den Zugriff per Firewall.
+- Bindet an `127.0.0.1:8090`; nginx (Port 80) leitet `signal-admin.srv001`
+  als Reverse-Proxy dorthin weiter.
+- Läuft als Benutzer `signal-cli`, damit Konfiguration und Ereignislog
+  gelesen und geschrieben werden können.
 - Look & Feel an GnuCashReporting (GRC) orientiert: Slate/Emerald, Sidebar,
   Karten, klare Tabellen.
 
