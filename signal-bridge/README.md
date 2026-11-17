@@ -12,6 +12,7 @@ Die Begründung, die Schritte B0 bis B5 und die Verifikationsmatrix stehen in
 | Datei | Zweck |
 | :--- | :--- |
 | `bridge.py` | Dienst, nur Standardbibliothek |
+| `command_parser.py` | Erkennung der drei Home-Office-Kommandos |
 | `config.example.json` | Vorlage für `/etc/signal-bridge/config.json` |
 | `tests/test_bridge.py` | Unit-Tests |
 
@@ -25,7 +26,7 @@ Die Begründung, die Schritte B0 bis B5 und die Verifikationsmatrix stehen in
 
 ```bash
 sudo install -d -o root -g root -m 0755 /opt/signal-bridge
-sudo install -o root -g root -m 0644 bridge.py /opt/signal-bridge/bridge.py
+sudo install -o root -g root -m 0644 bridge.py command_parser.py /opt/signal-bridge/
 
 sudo install -d -o root -g signal-cli -m 0750 /etc/signal-bridge
 sudo install -o root -g signal-cli -m 0640 config.example.json /etc/signal-bridge/config.json
@@ -60,11 +61,21 @@ vergebene Rufnummer keine Rechte.
 JSON Lines, ein Objekt pro Zeile:
 
 ```json
-{"ts":"2026-11-16T14:25:51+01:00","received_ms":1794820723054,"sender_number":"+49XXXXXXXXXX","sender_uuid":"0929926d-1816-4157-9e5f-f57862547f66","sender_name":"Matthias","text":"Test Had","attachments":0,"decision":"allowed","reason":"allowlist","matched_label":"Matthias"}
+{"ts":"2026-11-17T14:02:11+01:00","received_ms":1794920531000,"sender_number":"+49XXXXXXXXXX","sender_uuid":"0929926d-1816-4157-9e5f-f57862547f66","sender_name":"Matthias","text":"HO M an","attachments":0,"decision":"allowed","reason":"allowlist","matched_label":"Matthias","command":"on","actionable":true}
 ```
 
 `decision` ist `allowed` oder `blocked`, `reason` ist `allowlist`,
 `not_in_allowlist` oder `sender_disabled`.
+
+`command` ist `on`, `off`, `status` oder `null`. `actionable` ist nur dann
+`true`, wenn der Absender freigegeben **und** ein Kommando erkannt wurde. Nur
+dieses Feld entscheidet später über eine Aktion.
+
+## Kommandos
+
+Akzeptiert werden ausschließlich `HO M an`, `HO M aus` und `HO M Status`,
+unabhängig von Groß- und Kleinschreibung und mit beliebigem Leerraum.
+`HO M an aus`, `HO M an!` oder `HO M` ergeben kein Kommando.
 
 ## Betrieb
 

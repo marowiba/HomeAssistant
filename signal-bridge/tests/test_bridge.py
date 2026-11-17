@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import bridge  # noqa: E402
+import command_parser  # noqa: E402
 
 UUID_A = "0929926d-1816-4157-9e5f-f57862547f66"
 UUID_B = "4081e291-bf9c-4bca-8eff-ab2466783e53"
@@ -236,6 +237,70 @@ class RecordTests(unittest.TestCase):
             bridge.format_timestamp(SAMPLE_MS, timezone.utc),
             "2026-11-16T09:18:43+00:00",
         )
+
+    def test_allowed_command_is_actionable(self):
+        record = bridge.build_record(self.message(text="HO M an"), self.config())
+        self.assertEqual(record["command"], "on")
+        self.assertTrue(record["actionable"])
+
+    def test_blocked_command_is_not_actionable(self):
+        record = bridge.build_record(
+            self.message(sender_number=NUMBER_B, sender_uuid=UUID_B, text="HO M an"),
+            self.config(),
+        )
+        self.assertEqual(record["command"], "on")
+        self.assertFalse(record["actionable"])
+
+    def test_allowed_unknown_text_is_not_actionable(self):
+        record = bridge.build_record(self.message(text="Hallo"), self.config())
+        self.assertIsNone(record["command"])
+        self.assertFalse(record["actionable"])
+
+    def test_attachment_only_is_not_actionable(self):
+        record = bridge.build_record(self.message(text=None), self.config())
+        self.assertIsNone(record["command"])
+        self.assertFalse(record["actionable"])
+
+
+class CommandParserTests(unittest.TestCase):
+    def test_exact_commands(self):
+        self.assertEqual(command_parser.parse_command("HO M an"), "on")
+        self.assertEqual(command_parser.parse_command("HO M aus"), "off")
+        self.assertEqual(command_parser.parse_command("HO M Status"), "status")
+
+    def test_case_insensitive(self):
+        for text in ("HO M AN", "ho m an", "Ho M An", "hO m aN"):
+            self.assertEqual(command_parser.parse_command(text), "on", text)
+        for text in ("HO M AUS", "ho m aus"):
+            self.assertEqual(command_parser.parse_command(text), "off", text)
+        for text in ("HO M STATUS", "ho m status"):
+            self.assertEqual(command_parser.parse_command(text), "status", text)
+
+    def test_extra_whitespace(self):
+        self.assertEqual(command_parser.parse_command("  HO   M   an  "), "on")
+        self.assertEqual(command_parser.parse_command("HO\tM\nan"), "on")
+
+    def test_unknown_and_ambiguous_texts(self):
+        for text in (
+            "HO M",
+            "HO M an aus",
+            "HO M an!",
+            "HO M Status bitte",
+            "hallo",
+            "an",
+            "HO M an, bitte",
+        ):
+            self.assertIsNone(command_parser.parse_command(text), text)
+
+    def test_none_and_empty(self):
+        self.assertIsNone(command_parser.parse_command(None))
+        self.assertIsNone(command_parser.parse_command(""))
+        self.assertIsNone(command_parser.parse_command("   "))
+
+    def test_normalize(self):
+        self.assertEqual(command_parser.normalize("  Ho   M  AN "), "ho m an")
+        self.assertIsNone(command_parser.normalize(None))
+        self.assertIsNone(command_parser.normalize("  "))
 
 
 class LogTests(unittest.TestCase):

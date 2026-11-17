@@ -33,7 +33,7 @@ specs/
 
 | Epic | Ordner | Dateien |
 | :--- | :--- | :--- |
-| Signal-Integration | `specs/signal-integration/` | `design.md`, `HAD-0001-empfangsdienst.md`, `HAD-0002-allowlist-und-chatlog.md` |
+| Signal-Integration | `specs/signal-integration/` | `design.md`, `HAD-0001-empfangsdienst.md`, `HAD-0002-allowlist-und-chatlog.md`, `HAD-0003-kommandoerkennung.md` |
 | Dashboards | `specs/dashboards/` | `analysis.md`, `proposal.md` |
 
 `specs/dashboards/` ist eine **bewusste Ausnahme** von der Regel „ein Ordner pro

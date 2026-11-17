@@ -71,7 +71,9 @@ nicht in Nachrichten, Logs oder öffentlichen Dateien auszugeben.
   erforderlich; er wird nicht veröffentlicht und erhält keine Portfreigabe.
 - Home Assistant wird vom Ubuntu-Dienst über eine lokale Adresse im Heimnetz
   angesprochen. Auch dafür wird kein externer Zugriff auf Home Assistant
-  benötigt.
+  benötigt. Home Assistant läuft auf einem eigenen Raspberry Pi, nicht auf
+  `srv001`; der Aufruf erfolgt ausgehend über das Heimnetz an dessen Port 8123.
+  Auf `srv001` wird dafür kein Port geöffnet.
 - Mit dem dauerhaft laufenden Daemon kann der Ablauf quasi in Echtzeit
   reagieren: Nachricht empfangen, Befehl prüfen, Home Assistant aufrufen und
   Bestätigung über Signal zurücksenden. Eine garantierte Echtzeit oder feste

@@ -100,6 +100,9 @@ Ein Eintrag pro Zeile, JSON Lines:
 | `reason` | `allowlist`, `not_in_allowlist` oder `sender_disabled` |
 | `matched_label` | Bezeichnung des Allowlist-Eintrags, sonst `null` |
 
+Mit HAD-0003 kommen die Felder `command` und `actionable` hinzu; siehe
+`specs/signal-integration/HAD-0003-kommandoerkennung.md`.
+
 ### Konfiguration
 
 ```json

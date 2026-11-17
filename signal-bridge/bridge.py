@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import Any, Iterable, Iterator, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from command_parser import parse_command
+
 LOG = logging.getLogger("signal-bridge")
 
 DEFAULT_EVENTS_URL = "http://127.0.0.1:8080/api/v1/events"
@@ -252,6 +254,8 @@ def format_timestamp(ms: int, tz: tzinfo) -> str:
 
 def build_record(message: IncomingMessage, config: Config) -> dict[str, Any]:
     entry, reason = match_sender(config.allowlist, message.sender_number, message.sender_uuid)
+    allowed = entry is not None
+    command = parse_command(message.text)
     return {
         "ts": format_timestamp(message.received_ms, config.timezone),
         "received_ms": message.received_ms,
@@ -260,9 +264,11 @@ def build_record(message: IncomingMessage, config: Config) -> dict[str, Any]:
         "sender_name": message.sender_name,
         "text": message.text,
         "attachments": message.attachments,
-        "decision": "allowed" if entry is not None else "blocked",
+        "decision": "allowed" if allowed else "blocked",
         "reason": reason,
         "matched_label": entry.label if entry is not None else None,
+        "command": command,
+        "actionable": allowed and command is not None,
     }
 
 
@@ -416,10 +422,11 @@ def run(config: Config, stop: threading.Event, dry_run: bool = False) -> None:
             append_record(config.log_path, record)
 
         LOG.info(
-            "Nachricht von %s: %s (%s)",
+            "Nachricht von %s: %s (%s), Kommando: %s",
             record["sender_uuid"] or record["sender_number"] or "unbekannt",
             record["decision"],
             record["reason"],
+            record["command"] or "keins",
         )
 
         if not dry_run:
