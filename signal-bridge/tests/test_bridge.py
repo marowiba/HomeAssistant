@@ -204,7 +204,7 @@ class EnvelopeTests(unittest.TestCase):
 
 
 class RecordTests(unittest.TestCase):
-    def config(self):
+    def config(self, commands=None):
         return bridge.Config(
             events_url="http://127.0.0.1:8080/api/v1/events",
             log_path=Path("/tmp/x.jsonl"),
@@ -214,6 +214,7 @@ class RecordTests(unittest.TestCase):
             reconnect_delay=5,
             prune_interval=3600,
             allowlist=(bridge.AllowEntry(label="Matthias", number=NUMBER_A, uuid=UUID_A),),
+            commands=commands or {},
         )
 
     def message(self, **overrides):
@@ -264,6 +265,13 @@ class RecordTests(unittest.TestCase):
 
     def test_allowed_unknown_text_is_not_actionable(self):
         record = bridge.build_record(self.message(text="Hallo"), self.config())
+        self.assertIsNone(record["command"])
+        self.assertFalse(record["actionable"])
+
+    def test_disabled_command_is_not_actionable(self):
+        record = bridge.build_record(
+            self.message(text="HO M an"), self.config(commands={"on": False})
+        )
         self.assertIsNone(record["command"])
         self.assertFalse(record["actionable"])
 
@@ -700,6 +708,7 @@ class SendMessageTests(unittest.TestCase):
         server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.shutdown)
+        time.sleep(0.05)
         return server.server_address[1]
 
     def respond(self, payload):
@@ -825,6 +834,19 @@ class ConfigEdgeCaseTests(unittest.TestCase):
 
     def test_signal_rpc_url_invalid(self):
         self.assert_config_error(config_data(signal={"rpc_url": "ftp://x"}))
+
+    def test_commands_valid(self):
+        config = bridge.load_config(self.write(config_data(commands={"on": False})))
+        self.assertFalse(config.commands["on"])
+
+    def test_commands_not_object(self):
+        self.assert_config_error(config_data(commands=[]))
+
+    def test_commands_unknown(self):
+        self.assert_config_error(config_data(commands={"foo": True}))
+
+    def test_commands_not_bool(self):
+        self.assert_config_error(config_data(commands={"on": "yes"}))
 
     def test_actions_not_object(self):
         self.assert_config_error(config_data(home_assistant={"actions": []}))

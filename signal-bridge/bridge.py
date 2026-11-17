@@ -44,6 +44,11 @@ DEFAULT_PRUNE_INTERVAL = 3600
 LOG_FILE_MODE = 0o640
 
 _ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
+FIXED_COMMAND_IDS = ("on", "off", "status")
+
+
+def _empty_commands() -> dict[str, bool]:
+    return {}
 
 
 def _is_http_url(value: str) -> bool:
@@ -94,6 +99,7 @@ class Config:
         default_factory=lambda: HomeAssistantConfig(enabled=False, timeout=10, actions={})
     )
     signal: SignalConfig = field(default_factory=SignalConfig)
+    commands: dict[str, bool] = field(default_factory=_empty_commands)
 
 
 @dataclass(frozen=True)
@@ -161,6 +167,24 @@ def _parse_signal(raw_obj: dict[str, Any]) -> SignalConfig:
 
     timeout = _positive_int(section_obj, "timeout_seconds", 10)
     return SignalConfig(enabled=enabled, rpc_url=rpc_url, timeout=timeout)
+
+
+def _parse_commands(raw_obj: dict[str, Any]) -> dict[str, bool]:
+    section = raw_obj.get("commands")
+    if section is None:
+        return {}
+    if not isinstance(section, dict):
+        raise ConfigError("commands muss ein Objekt sein")
+
+    section_obj = cast(dict[str, Any], section)
+    result: dict[str, bool] = {}
+    for key, value in section_obj.items():
+        if key not in FIXED_COMMAND_IDS:
+            raise ConfigError(f"commands.{key} ist kein festes Kommando")
+        if not isinstance(value, bool):
+            raise ConfigError(f"commands.{key} muss true oder false sein")
+        result[key] = value
+    return result
 
 
 def _parse_actions(section_obj: dict[str, Any], enabled: bool) -> dict[str, str]:
@@ -276,6 +300,7 @@ def load_config(path: Path) -> Config:
         allowlist=entries,
         home_assistant=_parse_home_assistant(raw_obj),
         signal=_parse_signal(raw_obj),
+        commands=_parse_commands(raw_obj),
     )
 
 
@@ -372,6 +397,8 @@ def build_record(message: IncomingMessage, config: Config) -> dict[str, Any]:
     entry, reason = match_sender(config.allowlist, message.sender_number, message.sender_uuid)
     allowed = entry is not None
     command = parse_command(message.text)
+    if command is not None and not config.commands.get(command, True):
+        command = None
     return {
         "ts": format_timestamp(message.received_ms, config.timezone),
         "received_ms": message.received_ms,

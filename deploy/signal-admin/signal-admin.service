@@ -1,0 +1,34 @@
+[Unit]
+Description=Signal-Administration (Weboberflaeche)
+Documentation=file:/opt/signal-admin/README.md
+After=network-online.target signal-bridge.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=signal-admin
+Group=signal-admin
+WorkingDirectory=/opt/signal-admin
+EnvironmentFile=/etc/signal-admin/signal-admin.env
+ExecStart=/usr/bin/python3 -m signal_admin.app --config /etc/signal-bridge/config.json --log /var/lib/signal-bridge/messages.jsonl --db /var/lib/signal-admin/admin.db --host ${SIGNAL_ADMIN_HOST} --port ${SIGNAL_ADMIN_PORT}
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+# Haertung
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/signal-admin /etc/signal-bridge /var/lib/signal-bridge
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

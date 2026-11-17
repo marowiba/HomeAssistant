@@ -81,7 +81,7 @@ $DetailsFile = Join-Path $OutputDir "${Timestamp}_sonar_details.md"
 
 # 1. Tests mit Coverage
 Write-Host "[1/4] Tests und Coverage erzeugen..." -ForegroundColor Cyan
-python -m coverage run --source=signal-bridge --omit="signal-bridge/tests/*" -m pytest signal-bridge/tests -q
+python -m coverage run --source=signal-bridge,signal-admin/signal_admin --omit="signal-bridge/tests/*,signal-admin/tests/*" -m pytest signal-bridge/tests signal-admin/tests -q
 if ($LASTEXITCODE -ne 0) {
     Write-Warning "Tests sind mit Fehlern beendet worden."
 }
@@ -117,11 +117,11 @@ $sonarArgs = @(
     "-Dsonar.host.url=$SonarHostUrl",
     "-Dsonar.projectKey=$ProjectKey",
     "-Dsonar.projectName=$ProjectKey",
-    "-Dsonar.sources=signal-bridge",
-    "-Dsonar.tests=signal-bridge/tests",
+    "-Dsonar.sources=signal-bridge,signal-admin",
+    "-Dsonar.tests=signal-bridge/tests,signal-admin/tests",
     # Tests liegen unterhalb von sonar.sources. Ohne diesen Ausschluss
     # indexiert der Scanner dieselbe Datei zweimal (Haupt- und Testdatei).
-    "-Dsonar.exclusions=signal-bridge/tests/**",
+    "-Dsonar.exclusions=signal-bridge/tests/**,signal-admin/tests/**",
     "-Dsonar.python.coverage.reportPaths=coverage.xml",
     "-Dsonar.python.version=3.14",
     "-Dsonar.sourceEncoding=UTF-8"

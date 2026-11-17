@@ -64,8 +64,8 @@ der letzte Lauf liegen.
 
 | Einstellung | Wert |
 | :--- | :--- |
-| `sonar.sources` | `signal-bridge` |
-| `sonar.tests` | `signal-bridge/tests` |
+| `sonar.sources` | `signal-bridge`, `signal-admin` |
+| `sonar.tests` | `signal-bridge/tests`, `signal-admin/tests` |
 | `sonar.python.coverage.reportPaths` | `coverage.xml` |
 | `sonar.python.version` | `3.14` |
 
