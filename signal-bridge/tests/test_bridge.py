@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import bridge  # noqa: E402
 import command_parser  # noqa: E402
+import ha_client  # noqa: E402
 
 UUID_A = "0929926d-1816-4157-9e5f-f57862547f66"
 UUID_B = "4081e291-bf9c-4bca-8eff-ab2466783e53"
@@ -361,6 +362,207 @@ class SseTests(unittest.TestCase):
 
     def test_handles_trailing_event_without_blank_line(self):
         self.assertEqual(list(bridge.parse_sse_stream(['data: {"a":1}'])), [{"a": 1}])
+
+
+class HomeAssistantConfigTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def write(self, data):
+        path = self.tmp / "config.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return path
+
+    def test_disabled_by_default(self):
+        config = bridge.load_config(self.write({}))
+        self.assertFalse(config.home_assistant.enabled)
+        self.assertEqual(config.home_assistant.actions, {})
+
+    def test_enabled_requires_all_actions(self):
+        data = config_data(
+            home_assistant={"enabled": True, "actions": {"on": "http://127.0.0.1/a"}}
+        )
+        with self.assertRaises(bridge.ConfigError):
+            bridge.load_config(self.write(data))
+
+    def test_enabled_with_actions_and_status(self):
+        data = config_data(
+            home_assistant={
+                "enabled": True,
+                "actions": {
+                    "on": "http://127.0.0.1:8123/api/webhook/a",
+                    "off": "http://127.0.0.1:8123/api/webhook/b",
+                },
+                "status": {
+                    "url": "http://127.0.0.1:8123/api/states/switch.x",
+                    "token": "geheim",
+                },
+            }
+        )
+        config = bridge.load_config(self.write(data))
+        self.assertTrue(config.home_assistant.enabled)
+        self.assertEqual(sorted(config.home_assistant.actions), ["off", "on"])
+        self.assertEqual(
+            config.home_assistant.status_url,
+            "http://127.0.0.1:8123/api/states/switch.x",
+        )
+        self.assertEqual(config.home_assistant.status_token, "geheim")
+
+    def test_status_without_token_rejected(self):
+        data = config_data(
+            home_assistant={
+                "enabled": False,
+                "status": {"url": "http://127.0.0.1:8123/api/states/switch.x"},
+            }
+        )
+        with self.assertRaises(bridge.ConfigError):
+            bridge.load_config(self.write(data))
+
+    def test_invalid_url_rejected(self):
+        data = config_data(
+            home_assistant={"enabled": False, "actions": {"on": "ftp://127.0.0.1/a"}}
+        )
+        with self.assertRaises(bridge.ConfigError):
+            bridge.load_config(self.write(data))
+
+
+class WebhookTests(unittest.TestCase):
+    def start_server(self, handler_cls):
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        return server.server_address[1]
+
+    def test_success_without_response(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        port = self.start_server(Handler)
+        ok, detail = ha_client.call_webhook(f"http://127.0.0.1:{port}/api/webhook/x", 5)
+        self.assertTrue(ok)
+        self.assertIsNone(detail)
+
+    def test_read_state(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = json.dumps({"state": "on"}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        port = self.start_server(Handler)
+        ok, detail = ha_client.read_state(
+            f"http://127.0.0.1:{port}/api/states/x", "token", 5
+        )
+        self.assertTrue(ok)
+        self.assertEqual(detail, "on")
+
+    def test_http_error(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.send_response(404)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        port = self.start_server(Handler)
+        ok, detail = ha_client.call_webhook(f"http://127.0.0.1:{port}/api/webhook/x", 5)
+        self.assertFalse(ok)
+        self.assertEqual(detail, "HTTP 404")
+
+    def test_read_state_invalid_json(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = b"kein json"
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        port = self.start_server(Handler)
+        ok, detail = ha_client.read_state(
+            f"http://127.0.0.1:{port}/api/states/x", "token", 5
+        )
+        self.assertFalse(ok)
+        self.assertEqual(detail, "Antwort ist kein gueltiges JSON")
+
+    def test_connection_refused(self):
+        ok, detail = ha_client.call_webhook("http://127.0.0.1:1/api/webhook/x", 2)
+        self.assertFalse(ok)
+        self.assertIn("Verbindung fehlgeschlagen", detail or "")
+
+    def test_detail_contains_no_webhook_id(self):
+        ok, detail = ha_client.call_webhook("http://127.0.0.1:1/api/webhook/geheim", 2)
+        self.assertFalse(ok)
+        self.assertNotIn("geheim", detail or "")
+
+    def test_detail_contains_no_token(self):
+        ok, detail = ha_client.read_state("http://127.0.0.1:1/api/states/x", "geheim", 2)
+        self.assertFalse(ok)
+        self.assertNotIn("geheim", detail or "")
+
+
+class PerformActionTests(unittest.TestCase):
+    def test_no_command(self):
+        result = ha_client.perform_action(None, {}, None, None, 5, True)
+        self.assertFalse(result.attempted)
+        self.assertIsNone(result.ok)
+
+    def test_disabled(self):
+        result = ha_client.perform_action(
+            "on", {"on": "http://127.0.0.1/a"}, None, None, 5, False
+        )
+        self.assertFalse(result.attempted)
+        self.assertEqual(result.detail, "Anbindung deaktiviert")
+
+    def test_missing_webhook(self):
+        result = ha_client.perform_action("on", {}, None, None, 5, True)
+        self.assertFalse(result.attempted)
+        self.assertIn("kein Webhook", result.detail or "")
+
+    def test_status_not_configured(self):
+        result = ha_client.perform_action("status", {}, None, None, 5, True)
+        self.assertFalse(result.attempted)
+        self.assertEqual(result.detail, "Statusabfrage nicht konfiguriert")
+
+    def test_success(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        port = server.server_address[1]
+
+        result = ha_client.perform_action(
+            "on", {"on": f"http://127.0.0.1:{port}/api/webhook/x"}, None, None, 5, True
+        )
+        self.assertTrue(result.attempted)
+        self.assertTrue(result.ok)
+        self.assertIsNone(result.detail)
 
 
 class CliTests(unittest.TestCase):

@@ -13,5 +13,17 @@
       "uuid": "00000000-0000-0000-0000-000000000000",
       "enabled": true
     }
-  ]
+  ],
+  "home_assistant": {
+    "enabled": false,
+    "timeout_seconds": 10,
+    "actions": {
+      "on": "http://192.168.1.10:8123/api/webhook/REPLACE_ON",
+      "off": "http://192.168.1.10:8123/api/webhook/REPLACE_OFF"
+    },
+    "status": {
+      "url": "http://192.168.1.10:8123/api/states/switch.haustechnik_shc41ccf4_matthias_im_home_office",
+      "token": "REPLACE_TOKEN"
+    }
+  }
 }

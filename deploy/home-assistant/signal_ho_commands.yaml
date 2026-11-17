@@ -1,0 +1,61 @@
+# HAD-0004: Home-Assistant-Automationen fuer die Signal-Kommandos.
+#
+# Diese Datei ist eine Vorlage. Sie gehoert nach Home Assistant auf dem
+# Raspberry Pi, nicht auf srv001.
+#
+# Namensschema: signal_ho_<person>_<aktion>
+#   ho_m = Home Office Matthias
+#   ho_s = Home Office Stefaniya (noch nicht umgesetzt)
+#
+# Nur die Schaltbefehle laufen ueber Webhooks. Der Status wird ueber die
+# REST-API gelesen, weil Webhooks in Home Assistant keine Daten zurueckgeben
+# koennen. Dafuer ist ein dedizierter Nicht-Admin-Benutzer mit Long-Lived-Token
+# vorgesehen.
+#
+# Einbindung:
+#   1. Datei nach /config/automations_signal.yaml kopieren.
+#   2. In configuration.yaml ergaenzen:
+#        automation signal: !include automations_signal.yaml
+#   3. In secrets.yaml zwei zufaellige Webhook-IDs hinterlegen:
+#        signal_ho_m_on_webhook: "<zufaelliger-string>"
+#        signal_ho_m_off_webhook: "<zufaelliger-string>"
+#   4. Home Assistant neu starten.
+#   5. Die beiden URLs in /etc/signal-bridge/config.json eintragen:
+#        http://<pi-adresse>:8123/api/webhook/<signal_ho_m_on_webhook>
+#        http://<pi-adresse>:8123/api/webhook/<signal_ho_m_off_webhook>
+#
+# Die Webhook-IDs sind Geheimnisse. Sie gehoeren in secrets.yaml und nicht in
+# dieses Repository.
+
+- id: signal_ho_m_on
+  alias: "Signal: Home Office Matthias einschalten"
+  description: "Schaltet den Home-Office-Switch von Matthias ein. Aufruf durch die Signal-Bridge."
+  mode: single
+  trigger:
+    - platform: webhook
+      webhook_id: !secret signal_ho_m_on_webhook
+      allowed_methods:
+        - POST
+      local_only: true
+  action:
+    - service: switch.turn_on
+      target:
+        entity_id: switch.haustechnik_shc41ccf4_matthias_im_home_office
+
+- id: signal_ho_m_off
+  alias: "Signal: Home Office Matthias ausschalten"
+  description: "Schaltet den Home-Office-Switch von Matthias aus. Aufruf durch die Signal-Bridge."
+  mode: single
+  trigger:
+    - platform: webhook
+      webhook_id: !secret signal_ho_m_off_webhook
+      allowed_methods:
+        - POST
+      local_only: true
+  action:
+    - service: switch.turn_off
+      target:
+        entity_id: switch.haustechnik_shc41ccf4_matthias_im_home_office
+
+# Kein Status-Webhook: Webhooks koennen in Home Assistant keine Daten
+# zurueckgeben. Der Status wird ueber GET /api/states/<entity> gelesen.

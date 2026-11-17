@@ -13,6 +13,7 @@ Die Begründung, die Schritte B0 bis B5 und die Verifikationsmatrix stehen in
 | :--- | :--- |
 | `bridge.py` | Dienst, nur Standardbibliothek |
 | `command_parser.py` | Erkennung der drei Home-Office-Kommandos |
+| `ha_client.py` | Aufruf der Home-Assistant-Webhooks |
 | `config.example.json` | Vorlage für `/etc/signal-bridge/config.json` |
 | `tests/test_bridge.py` | Unit-Tests |
 
@@ -26,7 +27,7 @@ Die Begründung, die Schritte B0 bis B5 und die Verifikationsmatrix stehen in
 
 ```bash
 sudo install -d -o root -g root -m 0755 /opt/signal-bridge
-sudo install -o root -g root -m 0644 bridge.py command_parser.py /opt/signal-bridge/
+sudo install -o root -g root -m 0644 bridge.py command_parser.py ha_client.py /opt/signal-bridge/
 
 sudo install -d -o root -g signal-cli -m 0750 /etc/signal-bridge
 sudo install -o root -g signal-cli -m 0640 config.example.json /etc/signal-bridge/config.json
@@ -50,6 +51,7 @@ sudo systemctl enable --now signal-bridge.service
 | `reconnect_delay_seconds` | Wartezeit vor erneutem Verbinden |
 | `prune_interval_seconds` | Abstand der Aufbewahrungsbereinigung |
 | `allowlist` | Liste der freigegebenen Absender |
+| `home_assistant` | Webhook-Anbindung, siehe unten |
 
 Ein Allowlist-Eintrag braucht `label` und mindestens eines von `number` oder
 `uuid`. Ist eine `uuid` gesetzt, muss sie übereinstimmen; eine abweichende UUID
@@ -69,7 +71,38 @@ JSON Lines, ein Objekt pro Zeile:
 
 `command` ist `on`, `off`, `status` oder `null`. `actionable` ist nur dann
 `true`, wenn der Absender freigegeben **und** ein Kommando erkannt wurde. Nur
-dieses Feld entscheidet später über eine Aktion.
+dieses Feld entscheidet über eine Aktion.
+
+`action` ist `null`, wenn nichts ausgeführt wurde. Sonst enthält es
+`attempted`, `ok` und `detail`. Bei einer Statusabfrage steht in `detail` der
+Zustand, etwa `on` oder `off`; bei Fehlern ein Text ohne URL.
+
+## Home-Assistant-Anbindung
+
+```json
+"home_assistant": {
+  "enabled": true,
+  "timeout_seconds": 10,
+  "actions": {
+    "on": "http://<pi>:8123/api/webhook/<id-on>",
+    "off": "http://<pi>:8123/api/webhook/<id-off>"
+  },
+  "status": {
+    "url": "http://<pi>:8123/api/states/switch.haustechnik_shc41ccf4_matthias_im_home_office",
+    "token": "<long-lived-token>"
+  }
+}
+```
+
+Schaltbefehle laufen über Webhooks und brauchen keinen Token. Der Status wird
+über die REST-API gelesen, weil Webhooks in Home Assistant keine Daten
+zurückgeben können. Dafür ist ein dedizierter Nicht-Admin-Benutzer mit
+Long-Lived-Token vorgesehen; der Token wird nur für einen GET auf genau eine
+Entität verwendet und erscheint in keinem Log.
+
+Fehlt der Abschnitt `status`, wird geschaltet, aber `HO M Status` meldet
+`Statusabfrage nicht konfiguriert`. Die Automationen liegen als Vorlage in
+`deploy/home-assistant/signal_ho_commands.yaml`.
 
 ## Kommandos
 

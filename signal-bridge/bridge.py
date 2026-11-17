@@ -21,13 +21,14 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Any, Iterable, Iterator, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from command_parser import parse_command
+from ha_client import perform_action
 
 LOG = logging.getLogger("signal-bridge")
 
@@ -55,6 +56,15 @@ class AllowEntry:
 
 
 @dataclass(frozen=True)
+class HomeAssistantConfig:
+    enabled: bool
+    timeout: int
+    actions: dict[str, str]
+    status_url: str | None = None
+    status_token: str | None = None
+
+
+@dataclass(frozen=True)
 class Config:
     events_url: str
     log_path: Path
@@ -64,6 +74,9 @@ class Config:
     reconnect_delay: int
     prune_interval: int
     allowlist: tuple[AllowEntry, ...]
+    home_assistant: HomeAssistantConfig = field(
+        default_factory=lambda: HomeAssistantConfig(enabled=False, timeout=10, actions={})
+    )
 
 
 @dataclass(frozen=True)
@@ -110,6 +123,66 @@ def _parse_entry(item: Any, index: int) -> AllowEntry:
         number=number or None,
         uuid=uuid or None,
         enabled=enabled,
+    )
+
+
+def _parse_home_assistant(raw_obj: dict[str, Any]) -> HomeAssistantConfig:
+    section = raw_obj.get("home_assistant")
+    if section is None:
+        return HomeAssistantConfig(enabled=False, timeout=10, actions={})
+    if not isinstance(section, dict):
+        raise ConfigError("home_assistant muss ein Objekt sein")
+
+    section_obj = cast(dict[str, Any], section)
+    enabled = section_obj.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ConfigError("home_assistant.enabled muss true oder false sein")
+
+    timeout = _positive_int(section_obj, "timeout_seconds", 10)
+
+    actions_raw = section_obj.get("actions", {})
+    if not isinstance(actions_raw, dict):
+        raise ConfigError("home_assistant.actions muss ein Objekt sein")
+
+    actions_obj = cast(dict[str, Any], actions_raw)
+    actions: dict[str, str] = {}
+    for key in ("on", "off"):
+        value = actions_obj.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, str) or not value.startswith(("http://", "https://")):
+            raise ConfigError(f"home_assistant.actions.{key} muss eine http(s)-URL sein")
+        actions[key] = value
+
+    if enabled:
+        missing = [key for key in ("on", "off") if key not in actions]
+        if missing:
+            raise ConfigError(
+                "home_assistant.actions fehlen: " + ", ".join(missing)
+            )
+
+    status_url: str | None = None
+    status_token: str | None = None
+    status_raw = section_obj.get("status")
+    if status_raw is not None:
+        if not isinstance(status_raw, dict):
+            raise ConfigError("home_assistant.status muss ein Objekt sein")
+        status_obj = cast(dict[str, Any], status_raw)
+        url_value = status_obj.get("url")
+        token_value = status_obj.get("token")
+        if not isinstance(url_value, str) or not url_value.startswith(("http://", "https://")):
+            raise ConfigError("home_assistant.status.url muss eine http(s)-URL sein")
+        if not isinstance(token_value, str) or not token_value:
+            raise ConfigError("home_assistant.status.token fehlt")
+        status_url = url_value
+        status_token = token_value
+
+    return HomeAssistantConfig(
+        enabled=enabled,
+        timeout=timeout,
+        actions=actions,
+        status_url=status_url,
+        status_token=status_token,
     )
 
 
@@ -160,6 +233,7 @@ def load_config(path: Path) -> Config:
         reconnect_delay=_positive_int(raw_obj, "reconnect_delay_seconds", DEFAULT_RECONNECT_DELAY),
         prune_interval=_positive_int(raw_obj, "prune_interval_seconds", DEFAULT_PRUNE_INTERVAL),
         allowlist=entries,
+        home_assistant=_parse_home_assistant(raw_obj),
     )
 
 
@@ -269,6 +343,7 @@ def build_record(message: IncomingMessage, config: Config) -> dict[str, Any]:
         "matched_label": entry.label if entry is not None else None,
         "command": command,
         "actionable": allowed and command is not None,
+        "action": None,
     }
 
 
@@ -385,6 +460,15 @@ def _read_events(
             stop.wait(config.reconnect_delay)
 
 
+def _describe_action(action: Any) -> str:
+    if not isinstance(action, dict):
+        return "keine"
+    action_obj = cast(dict[str, Any], action)
+    if not action_obj.get("attempted"):
+        return f"nicht ausgefuehrt ({action_obj.get('detail')})"
+    return "ok" if action_obj.get("ok") else f"fehlgeschlagen ({action_obj.get('detail')})"
+
+
 def run(config: Config, stop: threading.Event, dry_run: bool = False) -> None:
     last_prune = 0.0
 
@@ -416,17 +500,29 @@ def run(config: Config, stop: threading.Event, dry_run: bool = False) -> None:
             continue
 
         record = build_record(message, config)
+        if record["actionable"]:
+            result = perform_action(
+                record["command"],
+                config.home_assistant.actions,
+                config.home_assistant.status_url,
+                config.home_assistant.status_token,
+                config.home_assistant.timeout,
+                config.home_assistant.enabled,
+            )
+            record["action"] = result.as_dict()
+
         if dry_run:
             print(json.dumps(record, ensure_ascii=False))
         else:
             append_record(config.log_path, record)
 
         LOG.info(
-            "Nachricht von %s: %s (%s), Kommando: %s",
+            "Nachricht von %s: %s (%s), Kommando: %s, Aktion: %s",
             record["sender_uuid"] or record["sender_number"] or "unbekannt",
             record["decision"],
             record["reason"],
             record["command"] or "keins",
+            _describe_action(record.get("action")),
         )
 
         if not dry_run:
