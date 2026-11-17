@@ -3,15 +3,20 @@
 
 from __future__ import annotations
 
+import contextlib
 import http.server
+import io
 import json
+import queue
 import sys
 import tempfile
 import threading
 import time
 import unittest
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -762,6 +767,510 @@ class SendReplyTests(unittest.TestCase):
         )
         self.assertFalse(result.attempted)
         self.assertEqual(result.detail, "keine Antwort vorgesehen")
+
+
+class ConfigEdgeCaseTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def write(self, data):
+        path = self.tmp / "config.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return path
+
+    def assert_config_error(self, data):
+        path = self.write(data)
+        with self.assertRaises(bridge.ConfigError):
+            bridge.load_config(path)
+
+    def test_allowlist_item_not_object(self):
+        self.assert_config_error(config_data(allowlist=[42]))
+
+    def test_allowlist_number_not_text(self):
+        self.assert_config_error(config_data(allowlist=[{"label": "X", "number": 123}]))
+
+    def test_allowlist_uuid_not_text(self):
+        self.assert_config_error(config_data(allowlist=[{"label": "X", "uuid": 123}]))
+
+    def test_allowlist_enabled_not_bool(self):
+        self.assert_config_error(
+            config_data(allowlist=[{"label": "X", "uuid": UUID_A, "enabled": "yes"}])
+        )
+
+    def test_signal_section_valid(self):
+        config = bridge.load_config(
+            self.write(
+                config_data(
+                    signal={
+                        "enabled": False,
+                        "rpc_url": "http://127.0.0.1:9/rpc",
+                        "timeout_seconds": 3,
+                    }
+                )
+            )
+        )
+        self.assertFalse(config.signal.enabled)
+        self.assertEqual(config.signal.rpc_url, "http://127.0.0.1:9/rpc")
+        self.assertEqual(config.signal.timeout, 3)
+
+    def test_signal_section_not_object(self):
+        self.assert_config_error(config_data(signal=[]))
+
+    def test_signal_enabled_not_bool(self):
+        self.assert_config_error(config_data(signal={"enabled": "yes"}))
+
+    def test_signal_rpc_url_invalid(self):
+        self.assert_config_error(config_data(signal={"rpc_url": "ftp://x"}))
+
+    def test_actions_not_object(self):
+        self.assert_config_error(config_data(home_assistant={"actions": []}))
+
+    def test_home_assistant_not_object(self):
+        self.assert_config_error(config_data(home_assistant=[]))
+
+    def test_home_assistant_enabled_not_bool(self):
+        self.assert_config_error(config_data(home_assistant={"enabled": "yes"}))
+
+    def test_status_not_object(self):
+        self.assert_config_error(config_data(home_assistant={"status": []}))
+
+    def test_status_url_invalid(self):
+        self.assert_config_error(
+            config_data(home_assistant={"status": {"url": "ftp://x", "token": "t"}})
+        )
+
+    def test_enabled_without_status(self):
+        config = bridge.load_config(
+            self.write(
+                config_data(
+                    home_assistant={
+                        "enabled": True,
+                        "actions": {
+                            "on": "http://127.0.0.1:8123/api/webhook/a",
+                            "off": "http://127.0.0.1:8123/api/webhook/b",
+                        },
+                    }
+                )
+            )
+        )
+        self.assertIsNone(config.home_assistant.status_url)
+        self.assertIsNone(config.home_assistant.status_token)
+
+    def test_config_not_object(self):
+        path = self.tmp / "config.json"
+        path.write_text("[]", encoding="utf-8")
+        with self.assertRaises(bridge.ConfigError):
+            bridge.load_config(path)
+
+    def test_timezone_not_text(self):
+        self.assert_config_error(config_data(timezone=123))
+
+    def test_events_url_invalid(self):
+        self.assert_config_error(config_data(events_url="ftp://x"))
+
+    def test_log_path_invalid(self):
+        self.assert_config_error(config_data(log_path=""))
+
+    def test_allowlist_not_list(self):
+        self.assert_config_error(config_data(allowlist={}))
+
+
+class AllowlistEdgeCaseTests(unittest.TestCase):
+    def entry(self, **overrides):
+        data = {"label": "Matthias", "number": NUMBER_A, "uuid": UUID_A, "enabled": True}
+        data.update(overrides)
+        return bridge.AllowEntry(**data)
+
+    def test_disabled_entry_matched_by_number(self):
+        entry, reason = bridge.match_sender(
+            (self.entry(uuid=None, enabled=False),), NUMBER_A, None
+        )
+        self.assertIsNone(entry)
+        self.assertEqual(reason, "sender_disabled")
+
+    def test_disabled_entry_not_matching_continues(self):
+        entry, reason = bridge.match_sender(
+            (self.entry(uuid=None, enabled=False),), NUMBER_B, None
+        )
+        self.assertIsNone(entry)
+        self.assertEqual(reason, "not_in_allowlist")
+
+    def test_entry_without_identifier_never_matches(self):
+        entry, reason = bridge.match_sender(
+            (bridge.AllowEntry(label="X"),), NUMBER_A, UUID_A
+        )
+        self.assertIsNone(entry)
+        self.assertEqual(reason, "not_in_allowlist")
+
+    def test_disabled_entry_then_enabled_match(self):
+        disabled = self.entry(uuid=None, number=NUMBER_B, enabled=False)
+        entry, reason = bridge.match_sender((disabled, self.entry()), NUMBER_A, UUID_A)
+        self.assertIsNotNone(entry)
+        self.assertEqual(reason, "allowlist")
+
+    def test_disabled_entry_without_identifier(self):
+        entry, reason = bridge.match_sender(
+            (bridge.AllowEntry(label="X", enabled=False),), NUMBER_A, UUID_A
+        )
+        self.assertIsNone(entry)
+        self.assertEqual(reason, "not_in_allowlist")
+
+
+class PruneEdgeCaseTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_prune_skips_blank_lines(self):
+        path = self.tmp / "messages.jsonl"
+        now = datetime(2026, 11, 16, tzinfo=timezone.utc)
+        new_ms = int((now - timedelta(days=1)).timestamp() * 1000)
+        path.write_text("\n" + json.dumps({"received_ms": new_ms}) + "\n", encoding="utf-8")
+        self.assertEqual(bridge.prune_log(path, 30, now=now), (1, 0))
+
+    def test_prune_drops_non_object_records(self):
+        path = self.tmp / "messages.jsonl"
+        path.write_text("[]\n", encoding="utf-8")
+        self.assertEqual(bridge.prune_log(path, 30), (0, 1))
+
+
+class ReadEventsTests(unittest.TestCase):
+    def config(self, reconnect_delay=0):
+        return bridge.Config(
+            events_url="http://127.0.0.1:1/api/v1/events",
+            log_path=Path("/tmp/x.jsonl"),
+            retention_days=30,
+            timezone=timezone.utc,
+            read_timeout=1,
+            reconnect_delay=reconnect_delay,
+            prune_interval=3600,
+            allowlist=(),
+        )
+
+    def test_stops_when_stop_set_during_iteration(self):
+        stop = threading.Event()
+        events: "queue.Queue[dict]" = queue.Queue()
+
+        def fake_iter(url, timeout):
+            stop.set()
+            yield {"a": 1}
+
+        with mock.patch.object(bridge, "iter_events", fake_iter):
+            bridge._read_events(self.config(), stop, events)
+        self.assertTrue(stop.is_set())
+        self.assertTrue(events.empty())
+
+    def test_reconnects_after_oserror(self):
+        stop = threading.Event()
+        events: "queue.Queue[dict]" = queue.Queue()
+        calls = {"n": 0}
+
+        def fake_iter(url, timeout):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise OSError("boom")
+            stop.set()
+            return iter(())
+
+        with mock.patch.object(bridge, "iter_events", fake_iter):
+            bridge._read_events(self.config(reconnect_delay=0), stop, events)
+        self.assertEqual(calls["n"], 2)
+
+
+class DescribeTests(unittest.TestCase):
+    def test_describe_reply_not_attempted(self):
+        self.assertEqual(
+            bridge._describe_reply({"attempted": False, "detail": "x"}),
+            "nicht gesendet (x)",
+        )
+
+    def test_describe_action_not_attempted(self):
+        self.assertEqual(
+            bridge._describe_action({"attempted": False, "detail": "y"}),
+            "nicht ausgefuehrt (y)",
+        )
+
+
+class ProcessPayloadTests(unittest.TestCase):
+    def config(self, log_path):
+        return bridge.Config(
+            events_url="http://127.0.0.1:1/api/v1/events",
+            log_path=log_path,
+            retention_days=30,
+            timezone=timezone.utc,
+            read_timeout=1,
+            reconnect_delay=1,
+            prune_interval=3600,
+            allowlist=(bridge.AllowEntry(label="Matthias", number=NUMBER_A, uuid=UUID_A),),
+        )
+
+    def test_ignores_payload_without_envelope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "messages.jsonl"
+            bridge._process_payload({"foo": "bar"}, self.config(log), False)
+            self.assertFalse(log.exists())
+
+    def test_ignores_non_message_envelope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "messages.jsonl"
+            payload = {"envelope": {"sourceUuid": UUID_A, "typingMessage": {}}}
+            bridge._process_payload(payload, self.config(log), False)
+            self.assertFalse(log.exists())
+
+    def test_dry_run_prints_instead_of_writing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "messages.jsonl"
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                bridge._process_payload({"envelope": envelope()}, self.config(log), True)
+            self.assertFalse(log.exists())
+            self.assertIn("Test Had", buffer.getvalue())
+
+
+class MaybePruneTests(unittest.TestCase):
+    def test_prunes_when_interval_elapsed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "messages.jsonl"
+            log.write_text("", encoding="utf-8")
+            config = bridge.Config(
+                events_url="http://127.0.0.1:1/api/v1/events",
+                log_path=log,
+                retention_days=30,
+                timezone=timezone.utc,
+                read_timeout=1,
+                reconnect_delay=1,
+                prune_interval=0,
+                allowlist=(),
+            )
+            self.assertGreaterEqual(bridge._maybe_prune(config, 0.0), 0.0)
+
+
+class MainTests(unittest.TestCase):
+    def test_invalid_config_returns_2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "fehlt.json"
+            self.assertEqual(bridge.main(["--config", str(missing)]), 2)
+
+    def test_check_config_returns_0(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.json"
+            config.write_text(
+                json.dumps({"log_path": str(Path(tmp) / "m.jsonl")}), encoding="utf-8"
+            )
+            self.assertEqual(
+                bridge.main(["--config", str(config), "--check-config"]), 0
+            )
+
+    def test_run_path_registers_signal_handlers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.json"
+            config.write_text(
+                json.dumps({"log_path": str(Path(tmp) / "m.jsonl")}), encoding="utf-8"
+            )
+            captured = {}
+
+            def fake_signal(signum, handler):
+                captured[signum] = handler
+
+            with mock.patch.object(bridge.signal, "signal", fake_signal), mock.patch.object(
+                bridge, "run", lambda *a, **k: None
+            ):
+                code = bridge.main(["--config", str(config)])
+
+            self.assertEqual(code, 0)
+            self.assertIn(bridge.signal.SIGTERM, captured)
+            captured[bridge.signal.SIGTERM](15, None)
+
+
+class HaClientErrorTests(unittest.TestCase):
+    def test_timeout(self):
+        with mock.patch.object(
+            ha_client.urllib.request, "urlopen", side_effect=TimeoutError()
+        ):
+            ok, detail = ha_client.call_webhook("http://127.0.0.1/x", 1)
+        self.assertFalse(ok)
+        self.assertEqual(detail, "Zeitueberschreitung")
+
+    def test_oserror(self):
+        with mock.patch.object(
+            ha_client.urllib.request, "urlopen", side_effect=OSError("kaputt")
+        ):
+            ok, detail = ha_client.call_webhook("http://127.0.0.1/x", 1)
+        self.assertFalse(ok)
+        self.assertIn("Netzwerkfehler", detail or "")
+
+    def read_state_with_body(self, body):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        port = server.server_address[1]
+        return ha_client.read_state(f"http://127.0.0.1:{port}/api/states/x", "t", 5)
+
+    def test_read_state_empty_body(self):
+        ok, detail = self.read_state_with_body(b"")
+        self.assertFalse(ok)
+        self.assertEqual(detail, "Leere Antwort")
+
+    def test_read_state_not_object(self):
+        ok, detail = self.read_state_with_body(b"[]")
+        self.assertFalse(ok)
+        self.assertEqual(detail, "Antwort ist kein Objekt")
+
+    def test_read_state_missing_state(self):
+        ok, detail = self.read_state_with_body(b"{}")
+        self.assertFalse(ok)
+        self.assertEqual(detail, "Antwort enthaelt keinen Zustand")
+
+
+class FriendlyErrorTests(unittest.TestCase):
+    def test_missing_detail(self):
+        reply = signal_client.build_reply(
+            "on", {"attempted": False, "ok": None, "detail": None}
+        )
+        self.assertEqual(reply, "Fehler: Die Aktion ist fehlgeschlagen.")
+
+    def test_timeout(self):
+        reply = signal_client.build_reply(
+            "on", {"attempted": True, "ok": False, "detail": "Zeitueberschreitung"}
+        )
+        self.assertEqual(reply, "Fehler: Home Assistant antwortet nicht.")
+
+    def test_status_not_configured(self):
+        reply = signal_client.build_reply(
+            "status",
+            {"attempted": False, "ok": None, "detail": "Statusabfrage nicht konfiguriert"},
+        )
+        self.assertEqual(reply, "Fehler: Die Statusabfrage ist nicht eingerichtet.")
+
+    def test_unknown_detail(self):
+        reply = signal_client.build_reply(
+            "on", {"attempted": True, "ok": False, "detail": "irgendwas"}
+        )
+        self.assertEqual(reply, "Fehler: Die Aktion ist fehlgeschlagen (irgendwas).")
+
+    def test_status_unknown_state(self):
+        reply = signal_client.build_reply(
+            "status", {"attempted": True, "ok": True, "detail": None}
+        )
+        self.assertEqual(reply, "Fehler: Der Schalterzustand ist unbekannt.")
+
+    def test_unknown_command_returns_none(self):
+        self.assertIsNone(
+            signal_client.build_reply(
+                "unbekannt", {"attempted": True, "ok": True, "detail": None}
+            )
+        )
+
+
+class SendMessageErrorTests(unittest.TestCase):
+    def respond_raw(self, body):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        return server.server_address[1]
+
+    def send(self, port):
+        return signal_client.send_message(
+            f"http://127.0.0.1:{port}/api/v1/rpc", "+491700000001", "Test", 5
+        )
+
+    def test_http_error(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.send_response(500)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        ok, detail = self.send(server.server_address[1])
+        self.assertFalse(ok)
+        self.assertEqual(detail, "HTTP 500")
+
+    def test_url_error(self):
+        with mock.patch.object(
+            signal_client.urllib.request,
+            "urlopen",
+            side_effect=urllib.error.URLError("weg"),
+        ):
+            ok, detail = signal_client.send_message("http://x", "+49", "t", 1)
+        self.assertFalse(ok)
+        self.assertIn("Verbindung fehlgeschlagen", detail or "")
+
+    def test_timeout(self):
+        with mock.patch.object(
+            signal_client.urllib.request, "urlopen", side_effect=TimeoutError()
+        ):
+            ok, detail = signal_client.send_message("http://x", "+49", "t", 1)
+        self.assertFalse(ok)
+        self.assertEqual(detail, "Zeitueberschreitung")
+
+    def test_oserror(self):
+        with mock.patch.object(
+            signal_client.urllib.request, "urlopen", side_effect=OSError("kaputt")
+        ):
+            ok, detail = signal_client.send_message("http://x", "+49", "t", 1)
+        self.assertFalse(ok)
+        self.assertIn("Netzwerkfehler", detail or "")
+
+    def test_invalid_json_response(self):
+        ok, detail = self.send(self.respond_raw(b"kein json"))
+        self.assertFalse(ok)
+        self.assertEqual(detail, "Antwort ist kein gueltiges JSON")
+
+    def test_non_object_response(self):
+        ok, detail = self.send(self.respond_raw(b"[]"))
+        self.assertFalse(ok)
+        self.assertEqual(detail, "Antwort ist kein Objekt")
+
+    def test_result_not_object(self):
+        ok, detail = self.send(self.respond_raw(json.dumps({"result": 5}).encode()))
+        self.assertTrue(ok)
+        self.assertIsNone(detail)
+
+    def test_results_not_list(self):
+        ok, detail = self.send(
+            self.respond_raw(json.dumps({"result": {"results": "x"}}).encode())
+        )
+        self.assertTrue(ok)
+        self.assertIsNone(detail)
+
+    def test_result_item_not_object(self):
+        ok, detail = self.send(
+            self.respond_raw(json.dumps({"result": {"results": [5]}}).encode())
+        )
+        self.assertTrue(ok)
+        self.assertIsNone(detail)
 
 
 if __name__ == "__main__":

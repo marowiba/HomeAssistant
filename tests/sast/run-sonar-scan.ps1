@@ -81,11 +81,34 @@ $DetailsFile = Join-Path $OutputDir "${Timestamp}_sonar_details.md"
 
 # 1. Tests mit Coverage
 Write-Host "[1/4] Tests und Coverage erzeugen..." -ForegroundColor Cyan
-python -m coverage run --source=signal-bridge -m pytest signal-bridge/tests -q
+python -m coverage run --source=signal-bridge --omit="signal-bridge/tests/*" -m pytest signal-bridge/tests -q
 if ($LASTEXITCODE -ne 0) {
     Write-Warning "Tests sind mit Fehlern beendet worden."
 }
 python -m coverage xml -o coverage.xml
+
+# Coverage-Luecken aus dem Cobertura-Bericht lesen (nur Quelldateien)
+$CoverageGaps = @()
+$CoverageFile = Join-Path $ProjectPath "coverage.xml"
+if (Test-Path $CoverageFile) {
+    [xml]$Cov = Get-Content $CoverageFile
+    foreach ($Class in $Cov.coverage.packages.package.classes.class) {
+        $FileName = $Class.filename
+        if (-not $FileName) { continue }
+        if ($FileName -match "tests/") { continue }
+        $Uncovered = @()
+        foreach ($Line in $Class.lines.line) {
+            if ($Line.hits -eq "0") { $Uncovered += [int]$Line.number }
+        }
+        $LineRate = 1.0
+        if ($Class.'line-rate') { $LineRate = [double]$Class.'line-rate' }
+        $CoverageGaps += [pscustomobject]@{
+            File = $FileName
+            LineRate = [math]::Round($LineRate * 100, 1)
+            Uncovered = $Uncovered
+        }
+    }
+}
 
 # 2. Scan
 Write-Host "[2/4] Sonar-Scan ausloesen..." -ForegroundColor Cyan
@@ -258,6 +281,11 @@ $SummaryMarkdown += @"
 | Duplizierte Dateien | $DupFiles |
 "@
 
+$SummaryMarkdown += "`n`n---`n`n## Testabdeckung je Datei`n`n| Datei | Coverage % | Nicht abgedeckte Zeilen |`n| ----- | ---------- | ----------------------- |"
+foreach ($Gap in $CoverageGaps) {
+    $SummaryMarkdown += "`n| ``$($Gap.File)`` | $($Gap.LineRate) | $($Gap.Uncovered.Count) |"
+}
+
 $SummaryMarkdown | Out-File -FilePath $SummaryFile -Encoding utf8
 
 # 6. Details
@@ -287,6 +315,19 @@ if ($IssuesData -and $IssuesData.issues) {
     }
 }
 
+$DetailsMarkdown += "`n`n---`n`n## Nicht abgedeckte Zeilen (Coverage)`n"
+if ($CoverageGaps.Count -eq 0) {
+    $DetailsMarkdown += "`nKeine Coverage-Daten gefunden."
+} else {
+    foreach ($Gap in $CoverageGaps) {
+        if ($Gap.Uncovered.Count -eq 0) {
+            $DetailsMarkdown += "`n- ``$($Gap.File)``: vollstaendig abgedeckt"
+        } else {
+            $Lines = ($Gap.Uncovered -join ", ")
+            $DetailsMarkdown += "`n- ``$($Gap.File)`` ($($Gap.LineRate) %): Zeilen $Lines"
+        }
+    }
+}
 $DetailsMarkdown += "`n"
 $DetailsMarkdown | Out-File -FilePath $DetailsFile -Encoding utf8
 

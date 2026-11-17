@@ -51,11 +51,13 @@ Der erste Scan meldete 19 Issues. Behoben wurden:
 
 ### S5: Verifikation
 
-- 83 Tests grün.
+- 140 Tests grün.
 - Quality Gate: OK.
 - Offene Issues: 0 (Security 0, Reliability 0, Maintainability 0).
 - Duplikate: 0.0 %, 0 Zeilen, 0 Blöcke, 0 Dateien.
-- Coverage: 85.8 % (614 zu deckende Zeilen, 87 nicht gedeckt).
+- Coverage: 100.0 % (612 zu deckende Zeilen, 0 nicht gedeckt).
+- Der Detailbericht listet nicht abgedeckte Zeilen je Quelldatei; der
+  Summary-Bericht enthält die Abdeckung je Datei.
 
 ## Entscheidungen
 

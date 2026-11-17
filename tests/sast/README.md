@@ -54,8 +54,8 @@ Mit abweichendem Server oder Projekt:
 
 | Datei | Inhalt |
 | :--- | :--- |
-| `reports/<zeitstempel>_sonar_summary.md` | Quality Gate, Issue-Zahlen, Schweregrade, Top-Regeln, Coverage, Duplikate |
-| `reports/<zeitstempel>_sonar_details.md` | jede offene Issue mit Datei, Zeile und Meldung |
+| `reports/<zeitstempel>_sonar_summary.md` | Quality Gate, Issue-Zahlen, Schweregrade, Top-Regeln, Coverage gesamt und je Datei, Duplikate |
+| `reports/<zeitstempel>_sonar_details.md` | jede offene Issue mit Datei, Zeile und Meldung; nicht abgedeckte Zeilen je Quelldatei |
 
 Der Ordner `tests/sast/reports/` ist von Git ausgeschlossen. Es bleibt immer nur
 der letzte Lauf liegen.
@@ -70,6 +70,19 @@ der letzte Lauf liegen.
 | `sonar.python.version` | `3.14` |
 
 Dokumentation, Deployment-Vorlagen und Spezifikationen werden nicht analysiert.
+
+## Testabdeckung
+
+Ziel ist **100 %** Zeilenabdeckung der Quelldateien. Die Tests werden mit
+`coverage.py` gemessen; Testdateien selbst zählen nicht mit
+(`--omit="signal-bridge/tests/*"`).
+
+- Der Summary-Bericht enthält eine Tabelle „Testabdeckung je Datei".
+- Der Detailbericht listet unter „Nicht abgedeckte Zeilen (Coverage)" je
+  Quelldatei die noch nicht abgedeckten Zeilennummern.
+- Nicht abgedeckte Zeilen werden durch zusätzliche Tests geschlossen, nicht
+  durch Ausschlüsse. Ausnahme ist nur der `__main__`-Block, der nicht
+  importierbar ist.
 
 ## Prozessregel
 

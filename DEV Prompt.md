@@ -53,8 +53,10 @@ Die statische Analyse läuft über SonarQube (`http://sonar.srv001`, Projekt-Key
   Freigabe würde er Code melden, der noch geändert wird.
 - Vor dem Scan müssen alle Tests grün sein; das Skript erzeugt die Coverage
   selbst.
-- Ziel ist ein bestandenes Quality Gate mit 0 offenen Issues und 0 Duplikaten.
-  Findings werden im Code behoben, nicht durch Regel-Deaktivierung verdeckt.
+- Ziel ist ein bestandenes Quality Gate mit 0 offenen Issues, 0 Duplikaten und
+  100 % Zeilenabdeckung der Quelldateien. Findings und Coverage-Lücken werden
+  im Code bzw. durch Tests behoben, nicht durch Regel-Deaktivierung oder
+  Ausschlüsse verdeckt.
 - Der Token steht ausschließlich in `.env` (gitignoriert) oder wird als
   `-Token` übergeben. Ein global gesetztes `SONAR_TOKEN` überschreibt `.env`
   nicht.

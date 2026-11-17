@@ -27,7 +27,7 @@ liefert einen lesbaren Bericht.
 - 0 offene Issues.
 - 0 Duplikate.
 - Bestandenes Quality Gate.
-- Testabdeckung wird berichtet, ist aber kein hartes Gate.
+- 100 % Zeilenabdeckung der Quelldateien.
 
 ## Prozess
 
