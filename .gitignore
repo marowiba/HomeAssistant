@@ -10,3 +10,7 @@ home-assistant_v2.db
 !*.env.example
 __pycache__/
 *.pyc
+tests/sast/reports/
+coverage.xml
+.coverage
+.scannerwork/

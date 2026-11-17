@@ -43,6 +43,23 @@ Tickets ist verbindlich.
    sind und der Benutzer sie freigegeben hat. Commits nur auf ausdrücklichen
    Wunsch erstellen.
 
+## SAST und Codequalität
+
+Die statische Analyse läuft über SonarQube (`http://sonar.srv001`, Projekt-Key
+`HAD`) mit dem Skript `tests/sast/run-sonar-scan.ps1`. Details stehen in
+`tests/sast/README.md`.
+
+- Der Scan läuft **nach** dem UAT- und Freigabeschritt, nicht davor. Vor der
+  Freigabe würde er Code melden, der noch geändert wird.
+- Vor dem Scan müssen alle Tests grün sein; das Skript erzeugt die Coverage
+  selbst.
+- Ziel ist ein bestandenes Quality Gate mit 0 offenen Issues und 0 Duplikaten.
+  Findings werden im Code behoben, nicht durch Regel-Deaktivierung verdeckt.
+- Der Token steht ausschließlich in `.env` (gitignoriert) oder wird als
+  `-Token` übergeben. Ein global gesetztes `SONAR_TOKEN` überschreibt `.env`
+  nicht.
+- Berichte liegen unter `tests/sast/reports/` und werden nicht versioniert.
+
 ## Akzeptanzkriterien
 
 - Es wird ausschließlich der vereinbarte Ticketumfang geändert.

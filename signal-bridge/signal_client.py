@@ -78,13 +78,11 @@ def build_reply(command: str | None, action: Any) -> str | None:
     return None
 
 
-def send_message(
+def _build_send_request(
     rpc_url: str,
     recipient: str,
     text: str,
-    timeout: int,
-) -> tuple[bool, str | None]:
-    """Sendet eine Nachricht ueber JSON-RPC. Gibt (ok, detail) zurueck."""
+) -> urllib.request.Request:
     payload: dict[str, Any] = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -92,25 +90,46 @@ def send_message(
         "params": {"recipient": [recipient], "message": text},
     }
     data = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
+    return urllib.request.Request(
         rpc_url,
         data=data,
         method="POST",
         headers={"Content-Type": "application/json"},
     )
 
+
+def _post(request: urllib.request.Request, timeout: int) -> tuple[str | None, str | None]:
+    """Fuehrt die Anfrage aus. Gibt (body, fehler) zurueck."""
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = response.read().decode("utf-8", errors="replace")
+            return response.read().decode("utf-8", errors="replace"), None
     except urllib.error.HTTPError as exc:
-        return False, f"HTTP {exc.code}"
+        return None, f"HTTP {exc.code}"
     except urllib.error.URLError as exc:
-        return False, f"Verbindung fehlgeschlagen: {exc.reason}"
+        return None, f"Verbindung fehlgeschlagen: {exc.reason}"
     except TimeoutError:
-        return False, "Zeitueberschreitung"
+        return None, "Zeitueberschreitung"
     except OSError as exc:
-        return False, f"Netzwerkfehler: {exc.strerror or exc}"
+        return None, f"Netzwerkfehler: {exc.strerror or exc}"
 
+
+def _check_delivery_results(result: Any) -> str | None:
+    """Prueft die Zustellergebnisse. Gibt einen Fehlertext oder None zurueck."""
+    if not isinstance(result, dict):
+        return None
+    results = cast(dict[str, Any], result).get("results")
+    if not isinstance(results, list):
+        return None
+    for item in cast(list[Any], results):
+        if not isinstance(item, dict):
+            continue
+        kind = cast(dict[str, Any], item).get("type")
+        if kind not in (None, "SUCCESS"):
+            return f"Zustellung: {kind}"
+    return None
+
+
+def _parse_send_response(body: str) -> tuple[bool, str | None]:
     try:
         parsed = json.loads(body)
     except json.JSONDecodeError:
@@ -122,17 +141,24 @@ def send_message(
     if parsed_obj.get("error"):
         return False, "JSON-RPC-Fehler"
 
-    result = parsed_obj.get("result")
-    if isinstance(result, dict):
-        results = cast(dict[str, Any], result).get("results")
-        if isinstance(results, list):
-            for item in cast(list[Any], results):
-                if isinstance(item, dict):
-                    kind = cast(dict[str, Any], item).get("type")
-                    if kind not in (None, "SUCCESS"):
-                        return False, f"Zustellung: {kind}"
-
+    delivery_error = _check_delivery_results(parsed_obj.get("result"))
+    if delivery_error is not None:
+        return False, delivery_error
     return True, None
+
+
+def send_message(
+    rpc_url: str,
+    recipient: str,
+    text: str,
+    timeout: int,
+) -> tuple[bool, str | None]:
+    """Sendet eine Nachricht ueber JSON-RPC. Gibt (ok, detail) zurueck."""
+    request = _build_send_request(rpc_url, recipient, text)
+    body, error = _post(request, timeout)
+    if error is not None:
+        return False, error
+    return _parse_send_response(body or "")
 
 
 def send_reply(

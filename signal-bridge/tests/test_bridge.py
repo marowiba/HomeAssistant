@@ -83,20 +83,24 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(entry.enabled)
 
     def test_missing_label_rejected(self):
+        path = self.write(config_data(allowlist=[{"uuid": UUID_A}]))
         with self.assertRaises(bridge.ConfigError):
-            bridge.load_config(self.write(config_data(allowlist=[{"uuid": UUID_A}])))
+            bridge.load_config(path)
 
     def test_entry_without_identifier_rejected(self):
+        path = self.write(config_data(allowlist=[{"label": "X"}]))
         with self.assertRaises(bridge.ConfigError):
-            bridge.load_config(self.write(config_data(allowlist=[{"label": "X"}])))
+            bridge.load_config(path)
 
     def test_unknown_timezone_rejected(self):
+        path = self.write(config_data(timezone="Mars/Olympus"))
         with self.assertRaises(bridge.ConfigError):
-            bridge.load_config(self.write(config_data(timezone="Mars/Olympus")))
+            bridge.load_config(path)
 
     def test_retention_must_be_positive(self):
+        path = self.write(config_data(retention_days=0))
         with self.assertRaises(bridge.ConfigError):
-            bridge.load_config(self.write(config_data(retention_days=0)))
+            bridge.load_config(path)
 
     def test_invalid_json_rejected(self):
         path = self.tmp / "broken.json"
@@ -387,8 +391,9 @@ class HomeAssistantConfigTests(unittest.TestCase):
         data = config_data(
             home_assistant={"enabled": True, "actions": {"on": "http://127.0.0.1/a"}}
         )
+        path = self.write(data)
         with self.assertRaises(bridge.ConfigError):
-            bridge.load_config(self.write(data))
+            bridge.load_config(path)
 
     def test_enabled_with_actions_and_status(self):
         data = config_data(
@@ -420,15 +425,17 @@ class HomeAssistantConfigTests(unittest.TestCase):
                 "status": {"url": "http://127.0.0.1:8123/api/states/switch.x"},
             }
         )
+        path = self.write(data)
         with self.assertRaises(bridge.ConfigError):
-            bridge.load_config(self.write(data))
+            bridge.load_config(path)
 
     def test_invalid_url_rejected(self):
         data = config_data(
             home_assistant={"enabled": False, "actions": {"on": "ftp://127.0.0.1/a"}}
         )
+        path = self.write(data)
         with self.assertRaises(bridge.ConfigError):
-            bridge.load_config(self.write(data))
+            bridge.load_config(path)
 
 
 class WebhookTests(unittest.TestCase):

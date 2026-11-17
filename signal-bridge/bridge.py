@@ -19,8 +19,8 @@ import signal
 import sys
 import threading
 import time
-import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
@@ -42,6 +42,14 @@ DEFAULT_RECONNECT_DELAY = 5
 DEFAULT_PRUNE_INTERVAL = 3600
 
 LOG_FILE_MODE = 0o640
+
+_ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
+
+
+def _is_http_url(value: str) -> bool:
+    """Prueft, ob der Wert eine absolute http(s)-URL ist."""
+    parsed = urlparse(value)
+    return parsed.scheme in _ALLOWED_URL_SCHEMES and bool(parsed.netloc)
 
 
 class ConfigError(Exception):
@@ -148,11 +156,50 @@ def _parse_signal(raw_obj: dict[str, Any]) -> SignalConfig:
         raise ConfigError("signal.enabled muss true oder false sein")
 
     rpc_url = section_obj.get("rpc_url", DEFAULT_RPC_URL)
-    if not isinstance(rpc_url, str) or not rpc_url.startswith(("http://", "https://")):
+    if not isinstance(rpc_url, str) or not _is_http_url(rpc_url):
         raise ConfigError("signal.rpc_url muss eine http(s)-URL sein")
 
     timeout = _positive_int(section_obj, "timeout_seconds", 10)
     return SignalConfig(enabled=enabled, rpc_url=rpc_url, timeout=timeout)
+
+
+def _parse_actions(section_obj: dict[str, Any], enabled: bool) -> dict[str, str]:
+    actions_raw = section_obj.get("actions", {})
+    if not isinstance(actions_raw, dict):
+        raise ConfigError("home_assistant.actions muss ein Objekt sein")
+
+    actions_obj = cast(dict[str, Any], actions_raw)
+    actions: dict[str, str] = {}
+    for key in ("on", "off"):
+        value = actions_obj.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, str) or not _is_http_url(value):
+            raise ConfigError(f"home_assistant.actions.{key} muss eine http(s)-URL sein")
+        actions[key] = value
+
+    if enabled:
+        missing = [key for key in ("on", "off") if key not in actions]
+        if missing:
+            raise ConfigError("home_assistant.actions fehlen: " + ", ".join(missing))
+    return actions
+
+
+def _parse_status(section_obj: dict[str, Any]) -> tuple[str | None, str | None]:
+    status_raw = section_obj.get("status")
+    if status_raw is None:
+        return None, None
+    if not isinstance(status_raw, dict):
+        raise ConfigError("home_assistant.status muss ein Objekt sein")
+
+    status_obj = cast(dict[str, Any], status_raw)
+    url_value = status_obj.get("url")
+    token_value = status_obj.get("token")
+    if not isinstance(url_value, str) or not _is_http_url(url_value):
+        raise ConfigError("home_assistant.status.url muss eine http(s)-URL sein")
+    if not isinstance(token_value, str) or not token_value:
+        raise ConfigError("home_assistant.status.token fehlt")
+    return url_value, token_value
 
 
 def _parse_home_assistant(raw_obj: dict[str, Any]) -> HomeAssistantConfig:
@@ -168,43 +215,8 @@ def _parse_home_assistant(raw_obj: dict[str, Any]) -> HomeAssistantConfig:
         raise ConfigError("home_assistant.enabled muss true oder false sein")
 
     timeout = _positive_int(section_obj, "timeout_seconds", 10)
-
-    actions_raw = section_obj.get("actions", {})
-    if not isinstance(actions_raw, dict):
-        raise ConfigError("home_assistant.actions muss ein Objekt sein")
-
-    actions_obj = cast(dict[str, Any], actions_raw)
-    actions: dict[str, str] = {}
-    for key in ("on", "off"):
-        value = actions_obj.get(key)
-        if value is None:
-            continue
-        if not isinstance(value, str) or not value.startswith(("http://", "https://")):
-            raise ConfigError(f"home_assistant.actions.{key} muss eine http(s)-URL sein")
-        actions[key] = value
-
-    if enabled:
-        missing = [key for key in ("on", "off") if key not in actions]
-        if missing:
-            raise ConfigError(
-                "home_assistant.actions fehlen: " + ", ".join(missing)
-            )
-
-    status_url: str | None = None
-    status_token: str | None = None
-    status_raw = section_obj.get("status")
-    if status_raw is not None:
-        if not isinstance(status_raw, dict):
-            raise ConfigError("home_assistant.status muss ein Objekt sein")
-        status_obj = cast(dict[str, Any], status_raw)
-        url_value = status_obj.get("url")
-        token_value = status_obj.get("token")
-        if not isinstance(url_value, str) or not url_value.startswith(("http://", "https://")):
-            raise ConfigError("home_assistant.status.url muss eine http(s)-URL sein")
-        if not isinstance(token_value, str) or not token_value:
-            raise ConfigError("home_assistant.status.token fehlt")
-        status_url = url_value
-        status_token = token_value
+    actions = _parse_actions(section_obj, enabled)
+    status_url, status_token = _parse_status(section_obj)
 
     return HomeAssistantConfig(
         enabled=enabled,
@@ -239,8 +251,8 @@ def load_config(path: Path) -> Config:
             raise ConfigError(f"Unbekannte Zeitzone: {tz_name}") from exc
 
     events_url = raw_obj.get("events_url", DEFAULT_EVENTS_URL)
-    if not isinstance(events_url, str) or not events_url.startswith(("http://", "https://")):
-        raise ConfigError("events_url muss mit http:// oder https:// beginnen")
+    if not isinstance(events_url, str) or not _is_http_url(events_url):
+        raise ConfigError("events_url muss eine http(s)-URL sein")
 
     log_path = raw_obj.get("log_path", DEFAULT_LOG_PATH)
     if not isinstance(log_path, str) or not log_path:
@@ -484,7 +496,7 @@ def _read_events(
                 if stop.is_set():
                     return
                 events.put(payload)
-        except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        except OSError as exc:
             if stop.is_set():
                 return
             LOG.warning("Ereignisstrom unterbrochen: %s", exc)
@@ -509,9 +521,71 @@ def _describe_action(action: Any) -> str:
     return "ok" if action_obj.get("ok") else f"fehlgeschlagen ({action_obj.get('detail')})"
 
 
+def _apply_action_and_reply(record: dict[str, Any], config: Config) -> None:
+    result = perform_action(
+        record["command"],
+        config.home_assistant.actions,
+        config.home_assistant.status_url,
+        config.home_assistant.status_token,
+        config.home_assistant.timeout,
+        config.home_assistant.enabled,
+    )
+    record["action"] = result.as_dict()
+
+    reply = send_reply(
+        record["command"],
+        record["action"],
+        record["sender_number"],
+        config.signal.rpc_url,
+        config.signal.timeout,
+        config.signal.enabled,
+    )
+    record["reply"] = reply.as_dict()
+
+
+def _log_record(record: dict[str, Any]) -> None:
+    LOG.info(
+        "Nachricht von %s: %s (%s), Kommando: %s, Aktion: %s, Antwort: %s",
+        record["sender_uuid"] or record["sender_number"] or "unbekannt",
+        record["decision"],
+        record["reason"],
+        record["command"] or "keins",
+        _describe_action(record.get("action")),
+        _describe_reply(record.get("reply")),
+    )
+
+
+def _process_payload(payload: dict[str, Any], config: Config, dry_run: bool) -> None:
+    envelope = extract_envelope(payload)
+    if envelope is None:
+        return
+    message = parse_envelope(envelope)
+    if message is None:
+        return
+
+    record = build_record(message, config)
+    if record["actionable"]:
+        _apply_action_and_reply(record, config)
+
+    if dry_run:
+        print(json.dumps(record, ensure_ascii=False))
+    else:
+        append_record(config.log_path, record)
+
+    _log_record(record)
+
+
+def _maybe_prune(config: Config, last_prune: float) -> float:
+    now = time.monotonic()
+    if now - last_prune < config.prune_interval:
+        return last_prune
+    kept, dropped = prune_log(config.log_path, config.retention_days)
+    LOG.info("Aufbewahrung: %d behalten, %d entfernt", kept, dropped)
+    return now
+
+
 def run(config: Config, stop: threading.Event, dry_run: bool = False) -> None:
     last_prune = 0.0
-
     if not dry_run:
         kept, dropped = prune_log(config.log_path, config.retention_days)
         LOG.info("Aufbewahrung beim Start: %d behalten, %d entfernt", kept, dropped)
@@ -532,56 +606,10 @@ def run(config: Config, stop: threading.Event, dry_run: bool = False) -> None:
         except queue.Empty:
             continue
 
-        envelope = extract_envelope(payload)
-        if envelope is None:
-            continue
-        message = parse_envelope(envelope)
-        if message is None:
-            continue
-
-        record = build_record(message, config)
-        if record["actionable"]:
-            result = perform_action(
-                record["command"],
-                config.home_assistant.actions,
-                config.home_assistant.status_url,
-                config.home_assistant.status_token,
-                config.home_assistant.timeout,
-                config.home_assistant.enabled,
-            )
-            record["action"] = result.as_dict()
-
-            reply = send_reply(
-                record["command"],
-                record["action"],
-                record["sender_number"],
-                config.signal.rpc_url,
-                config.signal.timeout,
-                config.signal.enabled,
-            )
-            record["reply"] = reply.as_dict()
-
-        if dry_run:
-            print(json.dumps(record, ensure_ascii=False))
-        else:
-            append_record(config.log_path, record)
-
-        LOG.info(
-            "Nachricht von %s: %s (%s), Kommando: %s, Aktion: %s, Antwort: %s",
-            record["sender_uuid"] or record["sender_number"] or "unbekannt",
-            record["decision"],
-            record["reason"],
-            record["command"] or "keins",
-            _describe_action(record.get("action")),
-            _describe_reply(record.get("reply")),
-        )
+        _process_payload(payload, config, dry_run)
 
         if not dry_run:
-            now = time.monotonic()
-            if now - last_prune >= config.prune_interval:
-                kept, dropped = prune_log(config.log_path, config.retention_days)
-                LOG.info("Aufbewahrung: %d behalten, %d entfernt", kept, dropped)
-                last_prune = now
+            last_prune = _maybe_prune(config, last_prune)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -615,7 +643,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config = load_config(args.config)
     except ConfigError as exc:
-        LOG.error("%s", exc)
+        LOG.exception("Konfiguration ungueltig: %s", exc)
         return 2
 
     if args.check_config:
