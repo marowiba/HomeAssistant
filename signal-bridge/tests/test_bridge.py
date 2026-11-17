@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import bridge  # noqa: E402
 import command_parser  # noqa: E402
 import ha_client  # noqa: E402
+import signal_client  # noqa: E402
 
 UUID_A = "0929926d-1816-4157-9e5f-f57862547f66"
 UUID_B = "4081e291-bf9c-4bca-8eff-ab2466783e53"
@@ -624,6 +625,136 @@ class ShutdownTests(unittest.TestCase):
                 self.assertFalse(worker.is_alive(), "run() hat nicht zeitnah beendet")
         finally:
             server.shutdown()
+
+
+class SignalReplyTests(unittest.TestCase):
+    def test_on_success(self):
+        self.assertEqual(
+            signal_client.build_reply("on", {"attempted": True, "ok": True, "detail": None}),
+            "Home Office ist eingeschaltet.",
+        )
+
+    def test_off_success(self):
+        self.assertEqual(
+            signal_client.build_reply("off", {"attempted": True, "ok": True, "detail": None}),
+            "Home Office ist ausgeschaltet.",
+        )
+
+    def test_status_on(self):
+        self.assertEqual(
+            signal_client.build_reply("status", {"attempted": True, "ok": True, "detail": "on"}),
+            "Home Office ist eingeschaltet.",
+        )
+
+    def test_status_off(self):
+        self.assertEqual(
+            signal_client.build_reply("status", {"attempted": True, "ok": True, "detail": "off"}),
+            "Home Office ist ausgeschaltet.",
+        )
+
+    def test_status_unknown(self):
+        reply = signal_client.build_reply(
+            "status", {"attempted": True, "ok": True, "detail": "unavailable"}
+        )
+        self.assertIn("unavailable", reply or "")
+
+    def test_error_unreachable(self):
+        reply = signal_client.build_reply(
+            "on", {"attempted": True, "ok": False, "detail": "Verbindung fehlgeschlagen: x"}
+        )
+        self.assertEqual(reply, "Fehler: Home Assistant ist nicht erreichbar.")
+
+    def test_error_unauthorized(self):
+        reply = signal_client.build_reply(
+            "on", {"attempted": True, "ok": False, "detail": "HTTP 401"}
+        )
+        self.assertEqual(reply, "Fehler: Home Assistant hat den Zugriff abgelehnt.")
+
+    def test_not_attempted(self):
+        reply = signal_client.build_reply(
+            "on", {"attempted": False, "ok": None, "detail": "Anbindung deaktiviert"}
+        )
+        self.assertEqual(reply, "Fehler: Die Home-Assistant-Anbindung ist deaktiviert.")
+
+    def test_no_command(self):
+        self.assertIsNone(signal_client.build_reply(None, {"attempted": True, "ok": True}))
+
+    def test_no_action(self):
+        self.assertIsNone(signal_client.build_reply("on", None))
+
+
+class SendMessageTests(unittest.TestCase):
+    def start_server(self, handler_cls):
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        return server.server_address[1]
+
+    def respond(self, payload):
+        body = json.dumps(payload).encode()
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        return self.start_server(Handler)
+
+    def test_success(self):
+        port = self.respond(
+            {"jsonrpc": "2.0", "id": 1, "result": {"results": [{"type": "SUCCESS"}]}}
+        )
+        ok, detail = signal_client.send_message(
+            f"http://127.0.0.1:{port}/api/v1/rpc", "+491700000001", "Test", 5
+        )
+        self.assertTrue(ok)
+        self.assertIsNone(detail)
+
+    def test_jsonrpc_error(self):
+        port = self.respond({"jsonrpc": "2.0", "id": 1, "error": {"code": -1, "message": "x"}})
+        ok, detail = signal_client.send_message(
+            f"http://127.0.0.1:{port}/api/v1/rpc", "+491700000001", "Test", 5
+        )
+        self.assertFalse(ok)
+        self.assertEqual(detail, "JSON-RPC-Fehler")
+
+    def test_delivery_failure(self):
+        port = self.respond(
+            {"jsonrpc": "2.0", "id": 1, "result": {"results": [{"type": "NETWORK_FAILURE"}]}}
+        )
+        ok, detail = signal_client.send_message(
+            f"http://127.0.0.1:{port}/api/v1/rpc", "+491700000001", "Test", 5
+        )
+        self.assertFalse(ok)
+        self.assertIn("NETWORK_FAILURE", detail or "")
+
+
+class SendReplyTests(unittest.TestCase):
+    def test_disabled(self):
+        result = signal_client.send_reply(
+            "on", {"attempted": True, "ok": True}, "+49", "http://127.0.0.1:1", 2, False
+        )
+        self.assertFalse(result.attempted)
+        self.assertEqual(result.detail, "Antworten deaktiviert")
+
+    def test_no_recipient(self):
+        result = signal_client.send_reply(
+            "on", {"attempted": True, "ok": True}, None, "http://127.0.0.1:1", 2, True
+        )
+        self.assertFalse(result.attempted)
+        self.assertEqual(result.detail, "kein Empfaenger bekannt")
+
+    def test_no_reply_for_unknown_command(self):
+        result = signal_client.send_reply(
+            None, {"attempted": True, "ok": True}, "+49", "http://127.0.0.1:1", 2, True
+        )
+        self.assertFalse(result.attempted)
+        self.assertEqual(result.detail, "keine Antwort vorgesehen")
 
 
 if __name__ == "__main__":

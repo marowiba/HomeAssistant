@@ -13,7 +13,8 @@ Die Begründung, die Schritte B0 bis B5 und die Verifikationsmatrix stehen in
 | :--- | :--- |
 | `bridge.py` | Dienst, nur Standardbibliothek |
 | `command_parser.py` | Erkennung der drei Home-Office-Kommandos |
-| `ha_client.py` | Aufruf der Home-Assistant-Webhooks |
+| `ha_client.py` | Aufruf der Home-Assistant-Webhooks und Statusabfrage |
+| `signal_client.py` | Antworten über den signal-cli-Daemon |
 | `config.example.json` | Vorlage für `/etc/signal-bridge/config.json` |
 | `tests/test_bridge.py` | Unit-Tests |
 
@@ -27,7 +28,7 @@ Die Begründung, die Schritte B0 bis B5 und die Verifikationsmatrix stehen in
 
 ```bash
 sudo install -d -o root -g root -m 0755 /opt/signal-bridge
-sudo install -o root -g root -m 0644 bridge.py command_parser.py ha_client.py /opt/signal-bridge/
+sudo install -o root -g root -m 0644 bridge.py command_parser.py ha_client.py signal_client.py /opt/signal-bridge/
 
 sudo install -d -o root -g signal-cli -m 0750 /etc/signal-bridge
 sudo install -o root -g signal-cli -m 0640 config.example.json /etc/signal-bridge/config.json
@@ -51,6 +52,7 @@ sudo systemctl enable --now signal-bridge.service
 | `reconnect_delay_seconds` | Wartezeit vor erneutem Verbinden |
 | `prune_interval_seconds` | Abstand der Aufbewahrungsbereinigung |
 | `allowlist` | Liste der freigegebenen Absender |
+| `signal` | Antworten über den Daemon, siehe unten |
 | `home_assistant` | Webhook-Anbindung, siehe unten |
 
 Ein Allowlist-Eintrag braucht `label` und mindestens eines von `number` oder
@@ -76,6 +78,33 @@ dieses Feld entscheidet über eine Aktion.
 `action` ist `null`, wenn nichts ausgeführt wurde. Sonst enthält es
 `attempted`, `ok` und `detail`. Bei einer Statusabfrage steht in `detail` der
 Zustand, etwa `on` oder `off`; bei Fehlern ein Text ohne URL.
+
+`reply` ist `null`, wenn keine Antwort gesendet wurde. Sonst enthält es
+`attempted`, `ok` und `detail`.
+
+## Antworten
+
+```json
+"signal": {
+  "enabled": true,
+  "rpc_url": "http://127.0.0.1:8080/api/v1/rpc",
+  "timeout_seconds": 10
+}
+```
+
+Antworten gehen über die JSON-RPC-Schnittstelle des laufenden Daemons; ein
+zweiter `signal-cli`-Prozess würde am Lock scheitern. Der `account`-Parameter
+entfällt, weil der Daemon im Single-Account-Modus läuft.
+
+| Situation | Antwort |
+| :--- | :--- |
+| `HO M an` erfolgreich | „Home Office ist eingeschaltet.“ |
+| `HO M aus` erfolgreich | „Home Office ist ausgeschaltet.“ |
+| `HO M status` | Zustand als Satz, sonst „Home Office hat den Zustand: …“ |
+| Fehler | „Fehler: …“ mit verständlichem Grund |
+
+Nicht freigegebene Absender erhalten keine Antwort. Unbekannte Texte lösen
+weder Aktion noch Antwort aus.
 
 ## Home-Assistant-Anbindung
 

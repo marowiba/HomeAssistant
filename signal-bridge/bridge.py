@@ -29,6 +29,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from command_parser import parse_command
 from ha_client import perform_action
+from signal_client import DEFAULT_RPC_URL, send_reply
 
 LOG = logging.getLogger("signal-bridge")
 
@@ -56,6 +57,13 @@ class AllowEntry:
 
 
 @dataclass(frozen=True)
+class SignalConfig:
+    enabled: bool = True
+    rpc_url: str = DEFAULT_RPC_URL
+    timeout: int = 10
+
+
+@dataclass(frozen=True)
 class HomeAssistantConfig:
     enabled: bool
     timeout: int
@@ -77,6 +85,7 @@ class Config:
     home_assistant: HomeAssistantConfig = field(
         default_factory=lambda: HomeAssistantConfig(enabled=False, timeout=10, actions={})
     )
+    signal: SignalConfig = field(default_factory=SignalConfig)
 
 
 @dataclass(frozen=True)
@@ -124,6 +133,26 @@ def _parse_entry(item: Any, index: int) -> AllowEntry:
         uuid=uuid or None,
         enabled=enabled,
     )
+
+
+def _parse_signal(raw_obj: dict[str, Any]) -> SignalConfig:
+    section = raw_obj.get("signal")
+    if section is None:
+        return SignalConfig()
+    if not isinstance(section, dict):
+        raise ConfigError("signal muss ein Objekt sein")
+
+    section_obj = cast(dict[str, Any], section)
+    enabled = section_obj.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ConfigError("signal.enabled muss true oder false sein")
+
+    rpc_url = section_obj.get("rpc_url", DEFAULT_RPC_URL)
+    if not isinstance(rpc_url, str) or not rpc_url.startswith(("http://", "https://")):
+        raise ConfigError("signal.rpc_url muss eine http(s)-URL sein")
+
+    timeout = _positive_int(section_obj, "timeout_seconds", 10)
+    return SignalConfig(enabled=enabled, rpc_url=rpc_url, timeout=timeout)
 
 
 def _parse_home_assistant(raw_obj: dict[str, Any]) -> HomeAssistantConfig:
@@ -234,6 +263,7 @@ def load_config(path: Path) -> Config:
         prune_interval=_positive_int(raw_obj, "prune_interval_seconds", DEFAULT_PRUNE_INTERVAL),
         allowlist=entries,
         home_assistant=_parse_home_assistant(raw_obj),
+        signal=_parse_signal(raw_obj),
     )
 
 
@@ -344,6 +374,7 @@ def build_record(message: IncomingMessage, config: Config) -> dict[str, Any]:
         "command": command,
         "actionable": allowed and command is not None,
         "action": None,
+        "reply": None,
     }
 
 
@@ -460,6 +491,15 @@ def _read_events(
             stop.wait(config.reconnect_delay)
 
 
+def _describe_reply(reply: Any) -> str:
+    if not isinstance(reply, dict):
+        return "keine"
+    reply_obj = cast(dict[str, Any], reply)
+    if not reply_obj.get("attempted"):
+        return f"nicht gesendet ({reply_obj.get('detail')})"
+    return "ok" if reply_obj.get("ok") else f"fehlgeschlagen ({reply_obj.get('detail')})"
+
+
 def _describe_action(action: Any) -> str:
     if not isinstance(action, dict):
         return "keine"
@@ -511,18 +551,29 @@ def run(config: Config, stop: threading.Event, dry_run: bool = False) -> None:
             )
             record["action"] = result.as_dict()
 
+            reply = send_reply(
+                record["command"],
+                record["action"],
+                record["sender_number"],
+                config.signal.rpc_url,
+                config.signal.timeout,
+                config.signal.enabled,
+            )
+            record["reply"] = reply.as_dict()
+
         if dry_run:
             print(json.dumps(record, ensure_ascii=False))
         else:
             append_record(config.log_path, record)
 
         LOG.info(
-            "Nachricht von %s: %s (%s), Kommando: %s, Aktion: %s",
+            "Nachricht von %s: %s (%s), Kommando: %s, Aktion: %s, Antwort: %s",
             record["sender_uuid"] or record["sender_number"] or "unbekannt",
             record["decision"],
             record["reason"],
             record["command"] or "keins",
             _describe_action(record.get("action")),
+            _describe_reply(record.get("reply")),
         )
 
         if not dry_run:

@@ -14,6 +14,11 @@
       "enabled": true
     }
   ],
+  "signal": {
+    "enabled": true,
+    "rpc_url": "http://127.0.0.1:8080/api/v1/rpc",
+    "timeout_seconds": 10
+  },
   "home_assistant": {
     "enabled": false,
     "timeout_seconds": 10,
