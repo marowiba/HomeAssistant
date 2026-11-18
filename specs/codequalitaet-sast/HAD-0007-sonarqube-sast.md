@@ -32,9 +32,14 @@ warnt und setzt die Variable für den Lauf auf den aufgelösten Wert.
 
 ### S3: Analyseumfang
 
-`sonar.sources=signal-bridge`, `sonar.tests=signal-bridge/tests`,
-`sonar.exclusions=signal-bridge/tests/**`. Ohne den Ausschluss indexiert der
-Scanner Testdateien doppelt.
+`sonar.sources=signal-bridge,signal-admin`,
+`sonar.tests=signal-bridge/tests,signal-admin/tests`,
+`sonar.exclusions=signal-bridge/tests/**,signal-admin/tests/**`. Ohne den
+Ausschluss indexiert der Scanner Testdateien doppelt. Der Umfang umfasst 13
+Quelldateien: vier in `signal-bridge` (`bridge.py`, `command_parser.py`,
+`ha_client.py`, `signal_client.py`) und neun in `signal-admin/signal_admin`
+(`__init__.py`, `app.py`, `audit.py`, `auth.py`, `config_store.py`, `events.py`,
+`status.py`, `store.py`, `templates.py`).
 
 ### S4: Findings beheben
 
@@ -51,13 +56,22 @@ Der erste Scan meldete 19 Issues. Behoben wurden:
 
 ### S5: Verifikation
 
+Initialer Scan (nur `signal-bridge`):
+
 - 140 Tests grün.
 - Quality Gate: OK.
 - Offene Issues: 0 (Security 0, Reliability 0, Maintainability 0).
 - Duplikate: 0.0 %, 0 Zeilen, 0 Blöcke, 0 Dateien.
 - Coverage: 100.0 % (612 zu deckende Zeilen, 0 nicht gedeckt).
-- Der Detailbericht listet nicht abgedeckte Zeilen je Quelldatei; der
-  Summary-Bericht enthält die Abdeckung je Datei.
+
+Mit HAD-0008 wurde der Umfang um `signal-admin` erweitert. Aktueller Stand:
+
+- 342 Tests grün.
+- 13 Quelldateien, 1691 zu deckende Zeilen, 0 nicht gedeckt (100.0 %).
+- Quality Gate: OK, 0 offene Issues, 0 Duplikate.
+
+Der Detailbericht listet nicht abgedeckte Zeilen je Quelldatei; der
+Summary-Bericht enthält die Abdeckung je Datei.
 
 ## Entscheidungen
 

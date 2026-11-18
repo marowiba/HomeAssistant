@@ -33,6 +33,40 @@ def _flash(flash: str | None, error: bool = False) -> str:
     return f'<div class="{css}">{_e(flash)}</div>'
 
 
+ACTION_LABELS = (
+    ("on", "einschalten"),
+    ("off", "ausschalten"),
+    ("status", "Status"),
+    ("set_value", "Wert setzen"),
+    ("help", "Hilfe"),
+)
+
+
+def _action_options(selected: str) -> str:
+    return "".join(
+        f'<option value="{value}"{" selected" if value == selected else ""}>'
+        f"{_e(label)}</option>"
+        for value, label in ACTION_LABELS
+    )
+
+
+def _num(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _range_text(command: dict[str, Any]) -> str:
+    if command.get("action") != "set_value":
+        return "-"
+    low = _num(command.get("min"))
+    high = _num(command.get("max"))
+    unit = command.get("unit") or ""
+    return f"{low} bis {high} {unit}".strip()
+
+
 def layout(
     title: str,
     active: str,
@@ -192,26 +226,55 @@ def commands_page(
     rows = []
     for command in commands:
         enabled = bool(command.get("enabled", True))
+        command_id = command.get("id")
         rows.append(
             "<tr>"
-            f'<td class="mono">{_e(command.get("text"))}</td>'
-            f"<td>{_e(command.get('description'))}</td>"
-            f"<td>{_badge(enabled, 'aktiv', 'deaktiviert')}</td>"
-            "<td>"
-            '<form method="post" action="/commands/toggle" class="inline-form">'
+            '<td class="actions">'
+            '<form method="post" action="/commands/update" class="inline-form">'
             f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
-            f'<input type="hidden" name="command" value="{_e(command.get("id"))}">'
-            f'<input type="hidden" name="enabled" value="{"0" if enabled else "1"}">'
-            f'<button class="btn" type="submit">{"Deaktivieren" if enabled else "Aktivieren"}'
-            "</button></form></td></tr>"
+            f'<input type="hidden" name="command" value="{_e(command_id)}">'
+            f'<input name="text" value="{_e(command.get("text"))}" required>'
+            f'<select name="action">{_action_options(str(command.get("action")))}</select>'
+            f'<input name="entity_id" value="{_e(command.get("entity_id") or "")}" '
+            'placeholder="domain.entity">'
+            f'<input name="min" value="{_e(_num(command.get("min")))}" '
+            'placeholder="min" size="5">'
+            f'<input name="max" value="{_e(_num(command.get("max")))}" '
+            'placeholder="max" size="5">'
+            f'<input name="unit" value="{_e(command.get("unit") or "")}" '
+            'placeholder="Einheit" size="6">'
+            '<label class="inline"><input type="checkbox" name="enabled" value="1"'
+            f'{" checked" if enabled else ""}> aktiv</label>'
+            '<button class="btn" type="submit">Speichern</button></form>'
+            '<form method="post" action="/commands/delete" class="inline-form" '
+            "onsubmit=\"return confirm('Kommando wirklich loeschen?');\">"
+            f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
+            f'<input type="hidden" name="command" value="{_e(command_id)}">'
+            '<button class="btn btn-danger" type="submit">Löschen</button></form>'
+            "</td>"
+            f'<td>{_badge(enabled, "aktiv", "deaktiviert")}</td>'
+            f"<td>{_e(_range_text(command))}</td>"
+            "</tr>"
         )
-    body = "".join(rows)
+    body = "".join(rows) or '<tr><td colspan="3" class="muted">Keine Kommandos.</td></tr>'
     content = (
-        '<section class="panel"><h2>Feste Kommandos</h2>'
-        '<p class="muted">Nur diese vier Kommandos sind zulaessig. Es lassen sich '
-        "keine frei ausfuehrbaren Home-Assistant-Dienste oder Templates anlegen.</p>"
-        "<table><thead><tr><th>Kommando</th><th>Bedeutung</th><th>Status</th>"
-        f"<th>Aktion</th></tr></thead><tbody>{body}</tbody></table></section>"
+        '<section class="panel"><h2>Neues Kommando anlegen</h2>'
+        '<form class="grid-form" method="post" action="/commands/add">'
+        f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
+        '<label>Signal-Text<input name="text" placeholder="HO T {wert}" required></label>'
+        f'<label>Aktion<select name="action">{_action_options("on")}</select></label>'
+        '<label>Entitaet<input name="entity_id" placeholder="climate.wohnzimmer"></label>'
+        '<label>Min<input name="min" placeholder="5"></label>'
+        '<label>Max<input name="max" placeholder="30"></label>'
+        '<label>Einheit<input name="unit" placeholder="°C"></label>'
+        '<label class="inline"><input type="checkbox" name="enabled" value="1" checked>'
+        " aktiv</label>"
+        '<button class="btn btn-primary" type="submit">Hinzufuegen</button></form>'
+        '<p class="muted">Werte-Kommandos brauchen den Platzhalter <code>{wert}</code> '
+        "am Ende. Erlaubt sind climate, number und input_number.</p></section>"
+        '<section class="panel"><h2>Kommandos</h2><table><thead><tr>'
+        "<th>Kommando</th><th>Status</th><th>Bereich</th>"
+        f"</tr></thead><tbody>{body}</tbody></table></section>"
     )
     return layout("Kommandos", "commands", content, user, csrf, flash, error)
 
@@ -219,6 +282,7 @@ def commands_page(
 def events_page(
     events: list[dict[str, Any]],
     filters: dict[str, str],
+    commands: list[dict[str, Any]],
     user: str,
     csrf: str,
     page: int,
@@ -247,10 +311,15 @@ def events_page(
         f"{_e(label)}</option>"
         for value, label in (("", "alle"), ("allowed", "erlaubt"), ("blocked", "blockiert"))
     )
-    command_options = "".join(
-        f'<option value="{value}"{" selected" if filters.get("command") == value else ""}>'
-        f"{_e(label)}</option>"
-        for value, label in (("", "alle"), ("on", "an"), ("off", "aus"), ("status", "Status"))
+    command_options = (
+        f'<option value=""{" selected" if not filters.get("command") else ""}>alle</option>'
+        + "".join(
+            f'<option value="{_e(command.get("id"))}"'
+            f'{" selected" if filters.get("command") == command.get("id") else ""}>'
+            f'{_e(command.get("text"))}</option>'
+            for command in commands
+            if isinstance(command, dict)
+        )
     )
     prev_link = (
         f'<a class="btn btn-ghost" href="/events?{_query(filters, page - 1)}">Zurueck</a>'

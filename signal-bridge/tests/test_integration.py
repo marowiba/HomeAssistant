@@ -1,10 +1,10 @@
 # pyright: basic
-"""HAD-0006: Integrationstest der gesamten Kette.
+"""HAD-0006/HAD-0010: Integrationstest der gesamten Kette.
 
 Der Test ersetzt Signal und Home Assistant durch lokale HTTP-Server und prueft
 den Weg vom Ereignisstrom ueber Allowlist, Aktion und Antwort bis ins
-Protokoll. Geprueft werden freigegebene und nicht freigegebene Absender, alle
-drei Kommandos, abweichende Schreibweise, mehrdeutige Nachricht, unbekannter
+Protokoll. Geprueft werden freigegebene und nicht freigegebene Absender, die
+Kommandos, abweichende Schreibweise, mehrdeutige Nachricht, unbekannter
 Zustand und Verbindungsfehler.
 """
 
@@ -23,14 +23,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import bridge  # noqa: E402
+import command_parser  # noqa: E402
 
 UUID_ALLOWED = "0929926d-1816-4157-9e5f-f57862547f66"
 UUID_OTHER = "4081e291-bf9c-4bca-8eff-ab2466783e53"
 NUMBER_ALLOWED = "+491700000001"
 NUMBER_OTHER = "+491700000002"
 
-REPLY_ON = "Home Office ist eingeschaltet."
-REPLY_OFF = "Home Office ist ausgeschaltet."
+REPLY_ON = "Eingeschaltet."
 
 
 def envelope(number, uuid, text, timestamp):
@@ -52,7 +52,7 @@ EVENTS = [
 
 
 class FakeHomeAssistant(http.server.BaseHTTPRequestHandler):
-    """Beantwortet Ereignisstrom, Webhooks, Statusabfrage und JSON-RPC."""
+    """Beantwortet Ereignisstrom, Dienste, Statusabfrage und JSON-RPC."""
 
     calls: list[str] = []
     rpc_payloads: list[dict] = []
@@ -74,7 +74,7 @@ class FakeHomeAssistant(http.server.BaseHTTPRequestHandler):
             except Exception:
                 return
         elif self.path.startswith("/api/states/"):
-            if self.path.endswith("/fehlt"):
+            if self.path.endswith("fehlt"):
                 self.send_response(404)
                 self.end_headers()
                 return
@@ -127,8 +127,7 @@ class IntegrationTests(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.log_path = Path(self._tmp.name) / "messages.jsonl"
 
-    def config(self, status_url=None, webhook_port=None):
-        port = webhook_port or self.port
+    def config(self, base_url=None, entity_id="switch.x"):
         return bridge.Config(
             events_url=f"http://127.0.0.1:{self.port}/api/v1/events",
             log_path=self.log_path,
@@ -143,17 +142,20 @@ class IntegrationTests(unittest.TestCase):
             home_assistant=bridge.HomeAssistantConfig(
                 enabled=True,
                 timeout=5,
-                actions={
-                    "on": f"http://127.0.0.1:{port}/api/webhook/on",
-                    "off": f"http://127.0.0.1:{port}/api/webhook/off",
-                },
-                status_url=status_url or f"http://127.0.0.1:{self.port}/api/states/switch.x",
-                status_token="token",
+                base_url=base_url or f"http://127.0.0.1:{self.port}",
+                token="token",
             ),
             signal=bridge.SignalConfig(
                 enabled=True,
                 rpc_url=f"http://127.0.0.1:{self.port}/api/v1/rpc",
                 timeout=5,
+            ),
+            commands=(
+                command_parser.Command("on", "HO M an", "on", entity_id),
+                command_parser.Command("off", "HO M aus", "off", entity_id),
+                command_parser.Command("status", "HO M Status", "status", entity_id),
+                command_parser.Command("help", "Hilfe", "help"),
+                command_parser.Command("help_q", "?", "help"),
             ),
         )
 
@@ -177,6 +179,13 @@ class IntegrationTests(unittest.TestCase):
         return [
             json.loads(line)
             for line in self.log_path.read_text(encoding="utf-8").splitlines()
+        ]
+
+    def messages(self):
+        return [
+            payload["params"]["message"]
+            for payload in FakeHomeAssistant.rpc_payloads
+            if isinstance(payload.get("params"), dict)
         ]
 
     def test_full_chain(self):
@@ -209,48 +218,37 @@ class IntegrationTests(unittest.TestCase):
 
     def test_reply_texts(self):
         self.run_bridge(self.config())
-        messages = [
-            payload["params"]["message"]
-            for payload in FakeHomeAssistant.rpc_payloads
-            if isinstance(payload.get("params"), dict)
-        ]
-        self.assertEqual(messages, [REPLY_ON, REPLY_ON])
+        self.assertEqual(self.messages(), [REPLY_ON, REPLY_ON])
 
-    def test_blocked_sender_triggers_no_webhook(self):
+    def test_blocked_sender_triggers_no_service_call(self):
         self.run_bridge(self.config())
-        webhooks = [call for call in FakeHomeAssistant.calls if call.startswith("/api/webhook/")]
-        self.assertEqual(len(webhooks), 1)
+        services = [
+            call for call in FakeHomeAssistant.calls if call.startswith("/api/services/")
+        ]
+        self.assertEqual(len(services), 1)
+        self.assertEqual(services[0], "/api/services/switch/turn_on")
 
     def test_unknown_state_is_reported(self):
-        records = self.run_bridge(
-            self.config(status_url=f"http://127.0.0.1:{self.port}/api/states/fehlt")
-        )
+        records = self.run_bridge(self.config(entity_id="switch.fehlt"))
         status_record = records[1]
         self.assertEqual(status_record["command"], "status")
         self.assertFalse(status_record["action"]["ok"])
         self.assertEqual(status_record["action"]["detail"], "HTTP 404")
         self.assertTrue(status_record["reply"]["ok"])
 
-        messages = [
-            payload["params"]["message"]
-            for payload in FakeHomeAssistant.rpc_payloads
-            if isinstance(payload.get("params"), dict)
-        ]
+        messages = self.messages()
         self.assertTrue(messages[1].startswith("Fehler:"), messages[1])
 
     def test_unreachable_home_assistant_is_reported(self):
-        records = self.run_bridge(self.config(webhook_port=9))
+        records = self.run_bridge(self.config(base_url="http://127.0.0.1:9"))
         on_record = records[0]
         self.assertFalse(on_record["action"]["ok"])
         self.assertIn("Verbindung fehlgeschlagen", on_record["action"]["detail"] or "")
         self.assertTrue(on_record["reply"]["ok"])
 
-        messages = [
-            payload["params"]["message"]
-            for payload in FakeHomeAssistant.rpc_payloads
-            if isinstance(payload.get("params"), dict)
-        ]
-        self.assertEqual(messages[0], "Fehler: Home Assistant ist nicht erreichbar.")
+        self.assertEqual(
+            self.messages()[0], "Fehler: Home Assistant ist nicht erreichbar."
+        )
 
 
 if __name__ == "__main__":

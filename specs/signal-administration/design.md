@@ -33,6 +33,8 @@ keine Internetveröffentlichung, keine eingehende Portfreigabe.
 ## Abgrenzung
 
 - Keine frei ausführbaren Home-Assistant-Dienste oder Templates.
+- Werte-Kommandos (`set_value`) sind auf die Domains `climate`, `number` und
+  `input_number` mit fest zugeordnetem Dienst beschränkt.
 - Keine Mehrmandanten, kein Internet-Betrieb, kein Desktop-Client.
 - Kein Ersatz für die Signal-Bridge; die Bridge bleibt der Empfangsdienst.
 

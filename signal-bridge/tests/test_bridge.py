@@ -32,6 +32,75 @@ NUMBER_B = "+491700000002"
 SAMPLE_MS = 1794820723054
 
 
+ENTITY = "switch.haustechnik_shc41ccf4_matthias_im_home_office"
+CLIMATE = "climate.wohnzimmer"
+
+
+def commands_data():
+    return [
+        {"id": "on", "text": "HO M an", "action": "on", "entity_id": ENTITY, "enabled": True},
+        {"id": "off", "text": "HO M aus", "action": "off", "entity_id": ENTITY, "enabled": True},
+        {
+            "id": "status",
+            "text": "HO M Status",
+            "action": "status",
+            "entity_id": ENTITY,
+            "enabled": True,
+        },
+        {"id": "help", "text": "Hilfe", "action": "help", "enabled": True},
+        {"id": "help_q", "text": "?", "action": "help", "enabled": True},
+        {
+            "id": "ho_t_set",
+            "text": "HO T {wert}",
+            "action": "set_value",
+            "entity_id": CLIMATE,
+            "min": 5.0,
+            "max": 30.0,
+            "unit": "°C",
+            "enabled": True,
+        },
+    ]
+
+
+def default_commands():
+    return (
+        command_parser.Command("on", "HO M an", "on", ENTITY),
+        command_parser.Command("off", "HO M aus", "off", ENTITY),
+        command_parser.Command("status", "HO M Status", "status", ENTITY),
+        command_parser.Command("help", "Hilfe", "help"),
+        command_parser.Command("help_q", "?", "help"),
+        command_parser.Command(
+            "ho_t_set", "HO T {wert}", "set_value", CLIMATE, 5.0, 30.0, "°C"
+        ),
+    )
+
+
+def disabled(commands, command_id):
+    return tuple(
+        command_parser.Command(
+            item.id,
+            item.text,
+            item.action,
+            item.entity_id,
+            item.min,
+            item.max,
+            item.unit,
+            False,
+        )
+        if item.id == command_id
+        else item
+        for item in commands
+    )
+
+
+COMMANDS = default_commands()
+
+
+def parsed_id(text):
+    parsed = command_parser.parse_command(text, COMMANDS)
+    return parsed.command.id if parsed is not None else None
+
+
 def config_data(**overrides):
     data = {
         "events_url": "http://127.0.0.1:8080/api/v1/events",
@@ -41,6 +110,13 @@ def config_data(**overrides):
         "allowlist": [
             {"label": "Matthias", "number": NUMBER_A, "uuid": UUID_A, "enabled": True}
         ],
+        "home_assistant": {
+            "enabled": True,
+            "timeout_seconds": 10,
+            "base_url": "http://127.0.0.1:8123",
+            "token": "TOKEN",
+        },
+        "commands": commands_data(),
     }
     data.update(overrides)
     return data
@@ -77,6 +153,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.retention_days, bridge.DEFAULT_RETENTION_DAYS)
         self.assertEqual(config.allowlist, ())
         self.assertEqual(getattr(config.timezone, "key", None), bridge.DEFAULT_TIMEZONE)
+        self.assertEqual([item.id for item in config.commands], ["help", "help_q"])
 
     def test_allowlist_entry(self):
         config = bridge.load_config(self.write(config_data()))
@@ -214,7 +291,7 @@ class RecordTests(unittest.TestCase):
             reconnect_delay=5,
             prune_interval=3600,
             allowlist=(bridge.AllowEntry(label="Matthias", number=NUMBER_A, uuid=UUID_A),),
-            commands=commands or {},
+            commands=commands if commands is not None else default_commands(),
         )
 
     def message(self, **overrides):
@@ -270,10 +347,20 @@ class RecordTests(unittest.TestCase):
 
     def test_disabled_command_is_not_actionable(self):
         record = bridge.build_record(
-            self.message(text="HO M an"), self.config(commands={"on": False})
+            self.message(text="HO M an"),
+            self.config(commands=disabled(default_commands(), "on")),
         )
         self.assertIsNone(record["command"])
         self.assertFalse(record["actionable"])
+
+    def test_value_command_is_actionable(self):
+        record = bridge.build_record(self.message(text="HO T 21,5"), self.config())
+        self.assertEqual(record["command"], "ho_t_set")
+        self.assertEqual(record["value"], 21.5)
+        self.assertTrue(record["actionable"])
+
+    def test_find_command_unknown(self):
+        self.assertIsNone(bridge._find_command(COMMANDS, "foo"))
 
     def test_attachment_only_is_not_actionable(self):
         record = bridge.build_record(self.message(text=None), self.config())
@@ -288,21 +375,21 @@ class RecordTests(unittest.TestCase):
 
 class CommandParserTests(unittest.TestCase):
     def test_exact_commands(self):
-        self.assertEqual(command_parser.parse_command("HO M an"), "on")
-        self.assertEqual(command_parser.parse_command("HO M aus"), "off")
-        self.assertEqual(command_parser.parse_command("HO M Status"), "status")
+        self.assertEqual(parsed_id("HO M an"), "on")
+        self.assertEqual(parsed_id("HO M aus"), "off")
+        self.assertEqual(parsed_id("HO M Status"), "status")
 
     def test_case_insensitive(self):
         for text in ("HO M AN", "ho m an", "Ho M An", "hO m aN"):
-            self.assertEqual(command_parser.parse_command(text), "on", text)
+            self.assertEqual(parsed_id(text), "on", text)
         for text in ("HO M AUS", "ho m aus"):
-            self.assertEqual(command_parser.parse_command(text), "off", text)
+            self.assertEqual(parsed_id(text), "off", text)
         for text in ("HO M STATUS", "ho m status"):
-            self.assertEqual(command_parser.parse_command(text), "status", text)
+            self.assertEqual(parsed_id(text), "status", text)
 
     def test_extra_whitespace(self):
-        self.assertEqual(command_parser.parse_command("  HO   M   an  "), "on")
-        self.assertEqual(command_parser.parse_command("HO\tM\nan"), "on")
+        self.assertEqual(parsed_id("  HO   M   an  "), "on")
+        self.assertEqual(parsed_id("HO\tM\nan"), "on")
 
     def test_unknown_and_ambiguous_texts(self):
         for text in (
@@ -314,12 +401,12 @@ class CommandParserTests(unittest.TestCase):
             "an",
             "HO M an, bitte",
         ):
-            self.assertIsNone(command_parser.parse_command(text), text)
+            self.assertIsNone(parsed_id(text), text)
 
     def test_none_and_empty(self):
-        self.assertIsNone(command_parser.parse_command(None))
-        self.assertIsNone(command_parser.parse_command(""))
-        self.assertIsNone(command_parser.parse_command("   "))
+        self.assertIsNone(command_parser.parse_command(None, COMMANDS))
+        self.assertIsNone(command_parser.parse_command("", COMMANDS))
+        self.assertIsNone(command_parser.parse_command("   ", COMMANDS))
 
     def test_normalize(self):
         self.assertEqual(command_parser.normalize("  Ho   M  AN "), "ho m an")
@@ -327,16 +414,59 @@ class CommandParserTests(unittest.TestCase):
         self.assertIsNone(command_parser.normalize("  "))
 
     def test_help_commands(self):
-        self.assertEqual(command_parser.parse_command("Hilfe"), "help")
-        self.assertEqual(command_parser.parse_command("hilfe"), "help")
-        self.assertEqual(command_parser.parse_command("?"), "help")
-        self.assertEqual(command_parser.parse_command("  Hilfe  "), "help")
+        self.assertEqual(parsed_id("Hilfe"), "help")
+        self.assertEqual(parsed_id("hilfe"), "help")
+        self.assertEqual(parsed_id("?"), "help_q")
+        self.assertEqual(parsed_id("  Hilfe  "), "help")
+
+    def test_value_commands(self):
+        parsed = command_parser.parse_command("HO T 21,5", COMMANDS)
+        assert parsed is not None
+        self.assertEqual(parsed.command.id, "ho_t_set")
+        self.assertEqual(parsed.value, 21.5)
+        dotted = command_parser.parse_command("HO T 21.5", COMMANDS)
+        assert dotted is not None
+        self.assertEqual(dotted.value, 21.5)
+        whole = command_parser.parse_command("HO T 21", COMMANDS)
+        assert whole is not None
+        self.assertEqual(whole.value, 21.0)
+        self.assertIsNone(command_parser.parse_command("HO T", COMMANDS))
+        self.assertIsNone(command_parser.parse_command("HO T abc", COMMANDS))
+        self.assertIsNone(command_parser.parse_command("HO T 21,5,5", COMMANDS))
+
+    def test_parse_value(self):
+        self.assertEqual(command_parser.parse_value("21,5"), 21.5)
+        self.assertEqual(command_parser.parse_value("21.5"), 21.5)
+        self.assertEqual(command_parser.parse_value("-3"), -3.0)
+        self.assertIsNone(command_parser.parse_value("21,"))
+        self.assertIsNone(command_parser.parse_value("1.234,5"))
+        self.assertIsNone(command_parser.parse_value("abc"))
+        self.assertIsNone(command_parser.parse_value(None))
+
+    def test_format_value(self):
+        self.assertEqual(command_parser.format_value(21.5), "21,5")
+        self.assertEqual(command_parser.format_value(21.0), "21")
+        self.assertEqual(command_parser.format_value(-3.0), "-3")
+        self.assertEqual(command_parser.format_value(None), "")
 
     def test_help_text(self):
-        text = command_parser.build_help_text()
+        text = command_parser.build_help_text(COMMANDS)
         self.assertIn("HO M an", text)
         self.assertIn("Hilfe", text)
         self.assertIn("?", text)
+        self.assertIn("HO T {wert}", text)
+
+    def test_help_text_skips_disabled(self):
+        text = command_parser.build_help_text(disabled(COMMANDS, "on"))
+        self.assertNotIn("HO M an", text)
+
+    def test_describe_unknown_action(self):
+        command = command_parser.Command("x", "X", "unknown")
+        self.assertEqual(command_parser.describe(command), "unknown")
+
+    def test_value_prefix_without_placeholder(self):
+        command = command_parser.Command("x", "X", "on")
+        self.assertIsNone(command_parser._value_prefix(command))
 
 
 class LogTests(unittest.TestCase):
@@ -415,69 +545,72 @@ class HomeAssistantConfigTests(unittest.TestCase):
     def test_disabled_by_default(self):
         config = bridge.load_config(self.write({}))
         self.assertFalse(config.home_assistant.enabled)
-        self.assertEqual(config.home_assistant.actions, {})
+        self.assertIsNone(config.home_assistant.base_url)
+        self.assertIsNone(config.home_assistant.token)
 
-    def test_enabled_requires_all_actions(self):
+    def test_enabled_requires_base_url_and_token(self):
         data = config_data(
-            home_assistant={"enabled": True, "actions": {"on": "http://127.0.0.1/a"}}
+            home_assistant={"enabled": True, "base_url": "http://127.0.0.1:8123"}
         )
         path = self.write(data)
         with self.assertRaises(bridge.ConfigError):
             bridge.load_config(path)
 
-    def test_enabled_with_actions_and_status(self):
+    def test_enabled_with_base_url_and_token(self):
         data = config_data(
             home_assistant={
                 "enabled": True,
-                "actions": {
-                    "on": "http://127.0.0.1:8123/api/webhook/a",
-                    "off": "http://127.0.0.1:8123/api/webhook/b",
-                },
-                "status": {
-                    "url": "http://127.0.0.1:8123/api/states/switch.x",
-                    "token": "geheim",
-                },
+                "timeout_seconds": 10,
+                "base_url": "http://127.0.0.1:8123",
+                "token": "geheim",
             }
         )
         config = bridge.load_config(self.write(data))
         self.assertTrue(config.home_assistant.enabled)
-        self.assertEqual(sorted(config.home_assistant.actions), ["off", "on"])
+        self.assertEqual(config.home_assistant.base_url, "http://127.0.0.1:8123")
+        self.assertEqual(config.home_assistant.token, "geheim")
+
+    def test_invalid_base_url_rejected(self):
+        data = config_data(
+            home_assistant={"enabled": False, "base_url": "ftp://127.0.0.1/a"}
+        )
+        path = self.write(data)
+        with self.assertRaises(bridge.ConfigError):
+            bridge.load_config(path)
+
+    def test_legacy_status_is_migrated(self):
+        data = config_data()
+        data.pop("commands")
+        data["home_assistant"] = {
+            "enabled": True,
+            "status": {
+                "url": "http://127.0.0.1:8123/api/states/switch.x",
+                "token": "geheim",
+            },
+        }
+        config = bridge.load_config(self.write(data))
+        self.assertEqual(config.home_assistant.base_url, "http://127.0.0.1:8123")
+        self.assertEqual(config.home_assistant.token, "geheim")
         self.assertEqual(
-            config.home_assistant.status_url,
-            "http://127.0.0.1:8123/api/states/switch.x",
+            [item.id for item in config.commands],
+            ["on", "off", "status", "help", "help_q"],
         )
-        self.assertEqual(config.home_assistant.status_token, "geheim")
-
-    def test_status_without_token_rejected(self):
-        data = config_data(
-            home_assistant={
-                "enabled": False,
-                "status": {"url": "http://127.0.0.1:8123/api/states/switch.x"},
-            }
-        )
-        path = self.write(data)
-        with self.assertRaises(bridge.ConfigError):
-            bridge.load_config(path)
-
-    def test_invalid_url_rejected(self):
-        data = config_data(
-            home_assistant={"enabled": False, "actions": {"on": "ftp://127.0.0.1/a"}}
-        )
-        path = self.write(data)
-        with self.assertRaises(bridge.ConfigError):
-            bridge.load_config(path)
+        self.assertEqual(config.commands[0].entity_id, "switch.x")
 
 
-class WebhookTests(unittest.TestCase):
+class HaClientTests(unittest.TestCase):
     def start_server(self, handler_cls):
         server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.shutdown)
         return server.server_address[1]
 
-    def test_success_without_response(self):
+    def test_post_service(self):
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                if length:
+                    self.rfile.read(length)
                 self.send_response(200)
                 self.end_headers()
 
@@ -485,9 +618,40 @@ class WebhookTests(unittest.TestCase):
                 pass
 
         port = self.start_server(Handler)
-        ok, detail = ha_client.call_webhook(f"http://127.0.0.1:{port}/api/webhook/x", 5)
+        ok, detail = ha_client._post_service(
+            f"http://127.0.0.1:{port}",
+            "token",
+            "switch",
+            "turn_on",
+            {"entity_id": "switch.x"},
+            5,
+        )
         self.assertTrue(ok)
         self.assertIsNone(detail)
+
+    def test_post_service_http_error(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                if length:
+                    self.rfile.read(length)
+                self.send_response(404)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        port = self.start_server(Handler)
+        ok, detail = ha_client._post_service(
+            f"http://127.0.0.1:{port}",
+            "token",
+            "switch",
+            "turn_on",
+            {"entity_id": "switch.x"},
+            5,
+        )
+        self.assertFalse(ok)
+        self.assertEqual(detail, "HTTP 404")
 
     def test_read_state(self):
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -504,24 +668,56 @@ class WebhookTests(unittest.TestCase):
 
         port = self.start_server(Handler)
         ok, detail = ha_client.read_state(
-            f"http://127.0.0.1:{port}/api/states/x", "token", 5
+            f"http://127.0.0.1:{port}", "token", "switch.x", 5
         )
         self.assertTrue(ok)
         self.assertEqual(detail, "on")
 
-    def test_http_error(self):
+    def test_read_state_climate_summary(self):
         class Handler(http.server.BaseHTTPRequestHandler):
-            def do_POST(self):
-                self.send_response(404)
+            def do_GET(self):
+                body = json.dumps(
+                    {
+                        "state": "heat",
+                        "attributes": {
+                            "current_temperature": 19.5,
+                            "temperature": 21.5,
+                        },
+                    }
+                ).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
+                self.wfile.write(body)
 
             def log_message(self, *args):
                 pass
 
         port = self.start_server(Handler)
-        ok, detail = ha_client.call_webhook(f"http://127.0.0.1:{port}/api/webhook/x", 5)
-        self.assertFalse(ok)
-        self.assertEqual(detail, "HTTP 404")
+        ok, detail = ha_client.read_state(
+            f"http://127.0.0.1:{port}", "token", "climate.x", 5
+        )
+        self.assertTrue(ok)
+        self.assertEqual(detail, "heat (Ist 19,5, Soll 21,5)")
+
+    def test_read_state_without_temperature(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = json.dumps({"state": "on", "attributes": {}}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        port = self.start_server(Handler)
+        ok, detail = ha_client.read_state(
+            f"http://127.0.0.1:{port}", "token", "switch.x", 5
+        )
+        self.assertTrue(ok)
+        self.assertEqual(detail, "on")
 
     def test_read_state_invalid_json(self):
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -537,53 +733,64 @@ class WebhookTests(unittest.TestCase):
 
         port = self.start_server(Handler)
         ok, detail = ha_client.read_state(
-            f"http://127.0.0.1:{port}/api/states/x", "token", 5
+            f"http://127.0.0.1:{port}", "token", "switch.x", 5
         )
         self.assertFalse(ok)
         self.assertEqual(detail, "Antwort ist kein gueltiges JSON")
 
     def test_connection_refused(self):
-        ok, detail = ha_client.call_webhook("http://127.0.0.1:1/api/webhook/x", 2)
+        ok, detail = ha_client._post_service(
+            "http://127.0.0.1:1", "token", "switch", "turn_on", {}, 2
+        )
         self.assertFalse(ok)
         self.assertIn("Verbindung fehlgeschlagen", detail or "")
 
-    def test_detail_contains_no_webhook_id(self):
-        ok, detail = ha_client.call_webhook("http://127.0.0.1:1/api/webhook/geheim", 2)
-        self.assertFalse(ok)
-        self.assertNotIn("geheim", detail or "")
-
     def test_detail_contains_no_token(self):
-        ok, detail = ha_client.read_state("http://127.0.0.1:1/api/states/x", "geheim", 2)
+        ok, detail = ha_client.read_state(
+            "http://127.0.0.1:1", "geheim", "switch.x", 2
+        )
         self.assertFalse(ok)
         self.assertNotIn("geheim", detail or "")
 
 
 class PerformActionTests(unittest.TestCase):
+    def command(
+        self, action, entity_id: str | None = ENTITY, min_value=None, max_value=None
+    ):
+        return command_parser.Command(
+            "x", "X", action, entity_id, min_value, max_value, "°C"
+        )
+
     def test_no_command(self):
-        result = ha_client.perform_action(None, {}, None, None, 5, True)
+        result = ha_client.perform_action(None, None, None, None, 5, True)
         self.assertFalse(result.attempted)
         self.assertIsNone(result.ok)
 
     def test_disabled(self):
         result = ha_client.perform_action(
-            "on", {"on": "http://127.0.0.1/a"}, None, None, 5, False
+            self.command("on"), None, "http://127.0.0.1", "t", 5, False
         )
         self.assertFalse(result.attempted)
         self.assertEqual(result.detail, "Anbindung deaktiviert")
 
-    def test_missing_webhook(self):
-        result = ha_client.perform_action("on", {}, None, None, 5, True)
+    def test_not_configured(self):
+        result = ha_client.perform_action(self.command("on"), None, None, None, 5, True)
         self.assertFalse(result.attempted)
-        self.assertIn("kein Webhook", result.detail or "")
+        self.assertEqual(result.detail, "Anbindung nicht konfiguriert")
 
-    def test_status_not_configured(self):
-        result = ha_client.perform_action("status", {}, None, None, 5, True)
+    def test_help_no_action(self):
+        result = ha_client.perform_action(
+            self.command("help", None), None, "http://127.0.0.1", "t", 5, True
+        )
         self.assertFalse(result.attempted)
-        self.assertEqual(result.detail, "Statusabfrage nicht konfiguriert")
+        self.assertEqual(result.detail, "keine Aktion")
 
-    def test_success(self):
+    def test_on_success(self):
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                if length:
+                    self.rfile.read(length)
                 self.send_response(200)
                 self.end_headers()
 
@@ -596,16 +803,108 @@ class PerformActionTests(unittest.TestCase):
         port = server.server_address[1]
 
         result = ha_client.perform_action(
-            "on", {"on": f"http://127.0.0.1:{port}/api/webhook/x"}, None, None, 5, True
+            self.command("on"), None, f"http://127.0.0.1:{port}", "t", 5, True
         )
         self.assertTrue(result.attempted)
         self.assertTrue(result.ok)
         self.assertIsNone(result.detail)
 
-    def test_help_no_action(self):
-        result = ha_client.perform_action("help", {}, None, None, 5, True)
+    def test_on_rejects_non_switch(self):
+        result = ha_client.perform_action(
+            self.command("on", "light.x"), None, "http://127.0.0.1", "t", 5, True
+        )
         self.assertFalse(result.attempted)
-        self.assertEqual(result.detail, "keine Aktion")
+        self.assertEqual(result.detail, "Aktion nur fuer switch-Entitaeten")
+
+    def test_set_value_out_of_range(self):
+        result = ha_client.perform_action(
+            self.command("set_value", CLIMATE, 5.0, 30.0),
+            31.0,
+            "http://127.0.0.1",
+            "t",
+            5,
+            True,
+        )
+        self.assertFalse(result.attempted)
+        self.assertEqual(result.detail, "Wert ausserhalb des Bereichs")
+
+    def test_set_value_below_min(self):
+        result = ha_client.perform_action(
+            self.command("set_value", CLIMATE, 5.0, 30.0),
+            1.0,
+            "http://127.0.0.1",
+            "t",
+            5,
+            True,
+        )
+        self.assertFalse(result.attempted)
+        self.assertEqual(result.detail, "Wert ausserhalb des Bereichs")
+
+    def test_set_value_rejects_unknown_domain(self):
+        result = ha_client.perform_action(
+            self.command("set_value", "switch.x", 5.0, 30.0),
+            10.0,
+            "http://127.0.0.1",
+            "t",
+            5,
+            True,
+        )
+        self.assertFalse(result.attempted)
+        self.assertEqual(result.detail, "Werte nur fuer climate, number, input_number")
+
+    def test_set_value_success(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                if length:
+                    self.rfile.read(length)
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        port = server.server_address[1]
+
+        result = ha_client.perform_action(
+            self.command("set_value", CLIMATE, 5.0, 30.0),
+            21.5,
+            f"http://127.0.0.1:{port}",
+            "t",
+            5,
+            True,
+        )
+        self.assertTrue(result.attempted)
+        self.assertTrue(result.ok)
+
+    def test_no_entity(self):
+        result = ha_client.perform_action(
+            self.command("on", None), None, "http://127.0.0.1", "t", 5, True
+        )
+        self.assertFalse(result.attempted)
+        self.assertEqual(result.detail, "keine Entitaet konfiguriert")
+
+    def test_set_value_without_value(self):
+        result = ha_client.perform_action(
+            self.command("set_value", CLIMATE, 5.0, 30.0),
+            None,
+            "http://127.0.0.1",
+            "t",
+            5,
+            True,
+        )
+        self.assertFalse(result.attempted)
+        self.assertEqual(result.detail, "kein Wert erkannt")
+
+    def test_unknown_action(self):
+        result = ha_client.perform_action(
+            self.command("unknown"), None, "http://127.0.0.1", "t", 5, True
+        )
+        self.assertFalse(result.attempted)
+        self.assertEqual(result.detail, "unbekannte Aktion")
 
 
 class CliTests(unittest.TestCase):
@@ -670,65 +969,94 @@ class ShutdownTests(unittest.TestCase):
 
 
 class SignalReplyTests(unittest.TestCase):
+    def reply(self, command_id, action, value=None):
+        command = next(item for item in COMMANDS if item.id == command_id)
+        return signal_client.build_reply(command, value, action, COMMANDS)
+
     def test_on_success(self):
         self.assertEqual(
-            signal_client.build_reply("on", {"attempted": True, "ok": True, "detail": None}),
-            "Home Office ist eingeschaltet.",
+            self.reply("on", {"attempted": True, "ok": True, "detail": None}),
+            "Eingeschaltet.",
         )
 
     def test_off_success(self):
         self.assertEqual(
-            signal_client.build_reply("off", {"attempted": True, "ok": True, "detail": None}),
-            "Home Office ist ausgeschaltet.",
+            self.reply("off", {"attempted": True, "ok": True, "detail": None}),
+            "Ausgeschaltet.",
         )
 
     def test_status_on(self):
         self.assertEqual(
-            signal_client.build_reply("status", {"attempted": True, "ok": True, "detail": "on"}),
-            "Home Office ist eingeschaltet.",
+            self.reply("status", {"attempted": True, "ok": True, "detail": "on"}),
+            "Eingeschaltet.",
         )
 
     def test_status_off(self):
         self.assertEqual(
-            signal_client.build_reply("status", {"attempted": True, "ok": True, "detail": "off"}),
-            "Home Office ist ausgeschaltet.",
+            self.reply("status", {"attempted": True, "ok": True, "detail": "off"}),
+            "Ausgeschaltet.",
         )
 
     def test_status_unknown(self):
-        reply = signal_client.build_reply(
+        reply = self.reply(
             "status", {"attempted": True, "ok": True, "detail": "unavailable"}
         )
         self.assertIn("unavailable", reply or "")
 
     def test_error_unreachable(self):
-        reply = signal_client.build_reply(
-            "on", {"attempted": True, "ok": False, "detail": "Verbindung fehlgeschlagen: x"}
+        reply = self.reply(
+            "on",
+            {"attempted": True, "ok": False, "detail": "Verbindung fehlgeschlagen: x"},
         )
         self.assertEqual(reply, "Fehler: Home Assistant ist nicht erreichbar.")
 
     def test_error_unauthorized(self):
-        reply = signal_client.build_reply(
-            "on", {"attempted": True, "ok": False, "detail": "HTTP 401"}
-        )
+        reply = self.reply("on", {"attempted": True, "ok": False, "detail": "HTTP 401"})
         self.assertEqual(reply, "Fehler: Home Assistant hat den Zugriff abgelehnt.")
 
     def test_not_attempted(self):
-        reply = signal_client.build_reply(
+        reply = self.reply(
             "on", {"attempted": False, "ok": None, "detail": "Anbindung deaktiviert"}
         )
         self.assertEqual(reply, "Fehler: Die Home-Assistant-Anbindung ist deaktiviert.")
 
     def test_no_command(self):
-        self.assertIsNone(signal_client.build_reply(None, {"attempted": True, "ok": True}))
+        self.assertIsNone(
+            signal_client.build_reply(None, None, {"attempted": True}, COMMANDS)
+        )
 
     def test_no_action(self):
-        self.assertIsNone(signal_client.build_reply("on", None))
+        command = next(item for item in COMMANDS if item.id == "on")
+        self.assertIsNone(signal_client.build_reply(command, None, None, COMMANDS))
 
     def test_help(self):
-        reply = signal_client.build_reply(
+        reply = self.reply(
             "help", {"attempted": False, "ok": None, "detail": "keine Aktion"}
         )
         self.assertIn("HO M an", reply or "")
+
+    def test_set_value_climate(self):
+        reply = self.reply(
+            "ho_t_set", {"attempted": True, "ok": True, "detail": None}, 21.5
+        )
+        self.assertEqual(reply, "Soll-Temperatur auf 21,5 °C gesetzt.")
+
+    def test_set_value_number(self):
+        command = command_parser.Command(
+            "n", "N {wert}", "set_value", "number.x", 0.0, 100.0, None
+        )
+        reply = signal_client.build_reply(
+            command, 42.0, {"attempted": True, "ok": True, "detail": None}, COMMANDS
+        )
+        self.assertEqual(reply, "Wert auf 42 gesetzt.")
+
+    def test_set_value_out_of_range(self):
+        reply = self.reply(
+            "ho_t_set",
+            {"attempted": False, "ok": None, "detail": "Wert ausserhalb des Bereichs"},
+            31.0,
+        )
+        self.assertEqual(reply, "Fehler: Wert muss zwischen 5 und 30 liegen.")
 
 
 class SendMessageTests(unittest.TestCase):
@@ -744,6 +1072,9 @@ class SendMessageTests(unittest.TestCase):
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                if length:
+                    self.rfile.read(length)
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
@@ -786,21 +1117,42 @@ class SendMessageTests(unittest.TestCase):
 class SendReplyTests(unittest.TestCase):
     def test_disabled(self):
         result = signal_client.send_reply(
-            "on", {"attempted": True, "ok": True}, "+49", "http://127.0.0.1:1", 2, False
+            COMMANDS[0],
+            None,
+            {"attempted": True, "ok": True},
+            COMMANDS,
+            "+49",
+            "http://127.0.0.1:1",
+            2,
+            False,
         )
         self.assertFalse(result.attempted)
         self.assertEqual(result.detail, "Antworten deaktiviert")
 
     def test_no_recipient(self):
         result = signal_client.send_reply(
-            "on", {"attempted": True, "ok": True}, None, "http://127.0.0.1:1", 2, True
+            COMMANDS[0],
+            None,
+            {"attempted": True, "ok": True},
+            COMMANDS,
+            None,
+            "http://127.0.0.1:1",
+            2,
+            True,
         )
         self.assertFalse(result.attempted)
         self.assertEqual(result.detail, "kein Empfaenger bekannt")
 
     def test_no_reply_for_unknown_command(self):
         result = signal_client.send_reply(
-            None, {"attempted": True, "ok": True}, "+49", "http://127.0.0.1:1", 2, True
+            None,
+            None,
+            {"attempted": True, "ok": True},
+            COMMANDS,
+            "+49",
+            "http://127.0.0.1:1",
+            2,
+            True,
         )
         self.assertFalse(result.attempted)
         self.assertEqual(result.detail, "keine Antwort vorgesehen")
@@ -864,24 +1216,72 @@ class ConfigEdgeCaseTests(unittest.TestCase):
         self.assert_config_error(config_data(signal={"rpc_url": "ftp://x"}))
 
     def test_commands_valid(self):
-        config = bridge.load_config(self.write(config_data(commands={"on": False})))
-        self.assertFalse(config.commands["on"])
+        data = config_data()
+        data["commands"][0]["enabled"] = False
+        config = bridge.load_config(self.write(data))
+        self.assertFalse(config.commands[0].enabled)
 
-    def test_commands_not_object(self):
-        self.assert_config_error(config_data(commands=[]))
+    def test_commands_not_list(self):
+        self.assert_config_error(config_data(commands="x"))
 
-    def test_commands_unknown(self):
-        self.assert_config_error(config_data(commands={"foo": True}))
+    def test_commands_unknown_action(self):
+        data = config_data()
+        data["commands"][0]["action"] = "explode"
+        self.assert_config_error(data)
 
-    def test_commands_not_bool(self):
-        self.assert_config_error(config_data(commands={"on": "yes"}))
+    def test_commands_missing_entity(self):
+        data = config_data()
+        data["commands"][0].pop("entity_id")
+        self.assert_config_error(data)
 
-    def test_commands_help_valid(self):
-        config = bridge.load_config(self.write(config_data(commands={"help": False})))
-        self.assertFalse(config.commands["help"])
+    def test_commands_duplicate_text(self):
+        data = config_data()
+        data["commands"][1]["text"] = "HO M an"
+        self.assert_config_error(data)
 
-    def test_actions_not_object(self):
-        self.assert_config_error(config_data(home_assistant={"actions": []}))
+    def test_commands_set_value_requires_placeholder(self):
+        data = config_data()
+        data["commands"][5]["text"] = "HO T"
+        self.assert_config_error(data)
+
+    def test_commands_set_value_requires_range(self):
+        data = config_data()
+        data["commands"][5].pop("min")
+        self.assert_config_error(data)
+
+    def test_commands_set_value_range_order(self):
+        data = config_data()
+        data["commands"][5]["min"] = 30.0
+        data["commands"][5]["max"] = 5.0
+        self.assert_config_error(data)
+
+    def test_commands_set_value_domain(self):
+        data = config_data()
+        data["commands"][5]["entity_id"] = "switch.x"
+        self.assert_config_error(data)
+
+    def test_commands_on_requires_switch(self):
+        data = config_data()
+        data["commands"][0]["entity_id"] = "light.x"
+        self.assert_config_error(data)
+
+    def test_legacy_commands_dict_is_migrated(self):
+        data = config_data()
+        data["commands"] = {"on": False}
+        data["home_assistant"] = {
+            "enabled": True,
+            "status": {
+                "url": "http://127.0.0.1:8123/api/states/switch.x",
+                "token": "t",
+            },
+        }
+        config = bridge.load_config(self.write(data))
+        self.assertEqual(
+            [item.id for item in config.commands],
+            ["on", "off", "status", "help", "help_q"],
+        )
+        self.assertFalse(config.commands[0].enabled)
+        self.assertEqual(config.commands[0].entity_id, "switch.x")
 
     def test_home_assistant_not_object(self):
         self.assert_config_error(config_data(home_assistant=[]))
@@ -889,30 +1289,76 @@ class ConfigEdgeCaseTests(unittest.TestCase):
     def test_home_assistant_enabled_not_bool(self):
         self.assert_config_error(config_data(home_assistant={"enabled": "yes"}))
 
-    def test_status_not_object(self):
-        self.assert_config_error(config_data(home_assistant={"status": []}))
-
-    def test_status_url_invalid(self):
+    def test_base_url_invalid(self):
         self.assert_config_error(
-            config_data(home_assistant={"status": {"url": "ftp://x", "token": "t"}})
+            config_data(home_assistant={"enabled": False, "base_url": "ftp://x"})
         )
 
-    def test_enabled_without_status(self):
-        config = bridge.load_config(
-            self.write(
-                config_data(
-                    home_assistant={
-                        "enabled": True,
-                        "actions": {
-                            "on": "http://127.0.0.1:8123/api/webhook/a",
-                            "off": "http://127.0.0.1:8123/api/webhook/b",
-                        },
-                    }
-                )
+    def test_enabled_without_token(self):
+        self.assert_config_error(
+            config_data(
+                home_assistant={"enabled": True, "base_url": "http://127.0.0.1:8123"}
             )
         )
-        self.assertIsNone(config.home_assistant.status_url)
-        self.assertIsNone(config.home_assistant.status_token)
+
+    def test_home_assistant_without_status_url(self):
+        config = bridge.load_config(
+            self.write(config_data(home_assistant={"enabled": False}))
+        )
+        self.assertIsNone(config.home_assistant.base_url)
+
+    def test_home_assistant_token_not_text(self):
+        self.assert_config_error(
+            config_data(home_assistant={"enabled": False, "token": 5})
+        )
+
+    def test_commands_entry_not_object(self):
+        self.assert_config_error(config_data(commands=[42]))
+
+    def test_commands_missing_id(self):
+        data = config_data()
+        data["commands"][0].pop("id")
+        self.assert_config_error(data)
+
+    def test_commands_missing_text(self):
+        data = config_data()
+        data["commands"][0].pop("text")
+        self.assert_config_error(data)
+
+    def test_commands_enabled_not_bool(self):
+        data = config_data()
+        data["commands"][0]["enabled"] = "yes"
+        self.assert_config_error(data)
+
+    def test_commands_entity_not_text(self):
+        data = config_data()
+        data["commands"][0]["entity_id"] = 5
+        self.assert_config_error(data)
+
+    def test_commands_entity_invalid(self):
+        data = config_data()
+        data["commands"][0]["entity_id"] = "Switch X"
+        self.assert_config_error(data)
+
+    def test_commands_set_value_missing_max(self):
+        data = config_data()
+        data["commands"][5].pop("max")
+        self.assert_config_error(data)
+
+    def test_commands_set_value_unit_not_text(self):
+        data = config_data()
+        data["commands"][5]["unit"] = 5
+        self.assert_config_error(data)
+
+    def test_commands_set_value_placeholder_not_at_end(self):
+        data = config_data()
+        data["commands"][5]["text"] = "HO T {wert} Grad"
+        self.assert_config_error(data)
+
+    def test_commands_duplicate_id(self):
+        data = config_data()
+        data["commands"][1]["id"] = "on"
+        self.assert_config_error(data)
 
     def test_config_not_object(self):
         path = self.tmp / "config.json"
@@ -1106,6 +1552,77 @@ class MaybePruneTests(unittest.TestCase):
             self.assertGreaterEqual(bridge._maybe_prune(config, 0.0), 0.0)
 
 
+class ReloadTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.path = self.tmp / "config.json"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def write(self, data):
+        self.path.write_text(json.dumps(data), encoding="utf-8")
+
+    def test_stamp_missing(self):
+        self.assertIsNone(bridge._config_stamp(self.tmp / "fehlt.json"))
+
+    def test_reload_unchanged(self):
+        self.write(config_data())
+        config = bridge.load_config(self.path)
+        stamp = bridge._config_stamp(self.path)
+        reloaded, new_stamp = bridge._reload_config(self.path, config, stamp)
+        self.assertIs(reloaded, config)
+        self.assertEqual(new_stamp, stamp)
+
+    def test_reload_changed(self):
+        self.write(config_data())
+        config = bridge.load_config(self.path)
+        stamp = bridge._config_stamp(self.path)
+        data = config_data()
+        data["retention_days"] = 7
+        self.write(data)
+        reloaded, new_stamp = bridge._reload_config(self.path, config, stamp)
+        self.assertEqual(reloaded.retention_days, 7)
+        self.assertNotEqual(new_stamp, stamp)
+
+    def test_reload_invalid_keeps_old(self):
+        self.write(config_data())
+        config = bridge.load_config(self.path)
+        stamp = bridge._config_stamp(self.path)
+        self.write({"retention_days": 0})
+        reloaded, new_stamp = bridge._reload_config(self.path, config, stamp)
+        self.assertIs(reloaded, config)
+        self.assertNotEqual(new_stamp, stamp)
+
+    def test_run_with_config_path(self):
+        self.write(config_data())
+        config = bridge.load_config(self.path)
+        stop = threading.Event()
+
+        def fake_iter(url, timeout):
+            yield {"envelope": envelope(text="HO M an")}
+            while not stop.is_set():
+                time.sleep(0.05)
+
+        with mock.patch.object(bridge, "iter_events", fake_iter), mock.patch.object(
+            bridge, "_process_payload"
+        ) as process:
+            worker = threading.Thread(
+                target=bridge.run,
+                args=(config, stop),
+                kwargs={"config_path": self.path},
+                daemon=True,
+            )
+            worker.start()
+            time.sleep(1.5)
+            stop.set()
+            worker.join(timeout=3)
+
+        self.assertFalse(worker.is_alive())
+        process.assert_called()
+
+
 class MainTests(unittest.TestCase):
     def test_invalid_config_returns_2(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1148,7 +1665,9 @@ class HaClientErrorTests(unittest.TestCase):
         with mock.patch.object(
             ha_client.urllib.request, "urlopen", side_effect=TimeoutError()
         ):
-            ok, detail = ha_client.call_webhook("http://127.0.0.1/x", 1)
+            ok, detail = ha_client._post_service(
+                "http://127.0.0.1", "t", "switch", "turn_on", {}, 1
+            )
         self.assertFalse(ok)
         self.assertEqual(detail, "Zeitueberschreitung")
 
@@ -1156,7 +1675,9 @@ class HaClientErrorTests(unittest.TestCase):
         with mock.patch.object(
             ha_client.urllib.request, "urlopen", side_effect=OSError("kaputt")
         ):
-            ok, detail = ha_client.call_webhook("http://127.0.0.1/x", 1)
+            ok, detail = ha_client._post_service(
+                "http://127.0.0.1", "t", "switch", "turn_on", {}, 1
+            )
         self.assertFalse(ok)
         self.assertIn("Netzwerkfehler", detail or "")
 
@@ -1175,7 +1696,7 @@ class HaClientErrorTests(unittest.TestCase):
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.shutdown)
         port = server.server_address[1]
-        return ha_client.read_state(f"http://127.0.0.1:{port}/api/states/x", "t", 5)
+        return ha_client.read_state(f"http://127.0.0.1:{port}", "t", "switch.x", 5)
 
     def test_read_state_empty_body(self):
         ok, detail = self.read_state_with_body(b"")
@@ -1194,41 +1715,82 @@ class HaClientErrorTests(unittest.TestCase):
 
 
 class FriendlyErrorTests(unittest.TestCase):
+    def reply(self, command_id, action):
+        command = next(item for item in COMMANDS if item.id == command_id)
+        return signal_client.build_reply(command, None, action, COMMANDS)
+
     def test_missing_detail(self):
-        reply = signal_client.build_reply(
-            "on", {"attempted": False, "ok": None, "detail": None}
-        )
+        reply = self.reply("on", {"attempted": False, "ok": None, "detail": None})
         self.assertEqual(reply, "Fehler: Die Aktion ist fehlgeschlagen.")
 
     def test_timeout(self):
-        reply = signal_client.build_reply(
+        reply = self.reply(
             "on", {"attempted": True, "ok": False, "detail": "Zeitueberschreitung"}
         )
         self.assertEqual(reply, "Fehler: Home Assistant antwortet nicht.")
 
-    def test_status_not_configured(self):
-        reply = signal_client.build_reply(
-            "status",
-            {"attempted": False, "ok": None, "detail": "Statusabfrage nicht konfiguriert"},
+    def test_not_configured(self):
+        reply = self.reply(
+            "on",
+            {"attempted": False, "ok": None, "detail": "Anbindung nicht konfiguriert"},
         )
-        self.assertEqual(reply, "Fehler: Die Statusabfrage ist nicht eingerichtet.")
+        self.assertEqual(
+            reply, "Fehler: Die Home-Assistant-Anbindung ist nicht eingerichtet."
+        )
+
+    def test_no_entity(self):
+        reply = self.reply(
+            "on",
+            {"attempted": False, "ok": None, "detail": "keine Entitaet konfiguriert"},
+        )
+        self.assertEqual(
+            reply, "Fehler: Fuer dieses Kommando ist keine Entitaet hinterlegt."
+        )
+
+    def test_switch_only(self):
+        reply = self.reply(
+            "on",
+            {
+                "attempted": False,
+                "ok": None,
+                "detail": "Aktion nur fuer switch-Entitaeten",
+            },
+        )
+        self.assertEqual(reply, "Fehler: Diese Aktion ist nur fuer Schalter erlaubt.")
+
+    def test_value_domain(self):
+        reply = self.reply(
+            "ho_t_set",
+            {
+                "attempted": False,
+                "ok": None,
+                "detail": "Werte nur fuer climate, number, input_number",
+            },
+        )
+        self.assertEqual(
+            reply, "Fehler: Fuer diese Entitaet sind keine Werte erlaubt."
+        )
+
+    def test_no_value(self):
+        reply = self.reply(
+            "ho_t_set",
+            {"attempted": False, "ok": None, "detail": "kein Wert erkannt"},
+        )
+        self.assertEqual(reply, "Fehler: Der Wert konnte nicht gelesen werden.")
 
     def test_unknown_detail(self):
-        reply = signal_client.build_reply(
-            "on", {"attempted": True, "ok": False, "detail": "irgendwas"}
-        )
+        reply = self.reply("on", {"attempted": True, "ok": False, "detail": "irgendwas"})
         self.assertEqual(reply, "Fehler: Die Aktion ist fehlgeschlagen (irgendwas).")
 
     def test_status_unknown_state(self):
-        reply = signal_client.build_reply(
-            "status", {"attempted": True, "ok": True, "detail": None}
-        )
-        self.assertEqual(reply, "Fehler: Der Schalterzustand ist unbekannt.")
+        reply = self.reply("status", {"attempted": True, "ok": True, "detail": None})
+        self.assertEqual(reply, "Fehler: Der Zustand ist unbekannt.")
 
     def test_unknown_command_returns_none(self):
+        command = command_parser.Command("x", "X", "unknown")
         self.assertIsNone(
             signal_client.build_reply(
-                "unbekannt", {"attempted": True, "ok": True, "detail": None}
+                command, None, {"attempted": True, "ok": True, "detail": None}, COMMANDS
             )
         )
 
@@ -1237,6 +1799,9 @@ class SendMessageErrorTests(unittest.TestCase):
     def respond_raw(self, body):
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                if length:
+                    self.rfile.read(length)
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()

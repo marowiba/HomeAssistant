@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import queue
+import re
 import signal
 import sys
 import threading
@@ -27,7 +28,19 @@ from pathlib import Path
 from typing import Any, Iterable, Iterator, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from command_parser import parse_command
+from command_parser import (
+    ACTION_HELP,
+    ACTION_OFF,
+    ACTION_ON,
+    ACTION_STATUS,
+    ACTIONS,
+    ENTITY_ACTIONS,
+    VALUE_PLACEHOLDER,
+    VALUE_SERVICES,
+    Command,
+    normalize,
+    parse_command,
+)
 from ha_client import perform_action
 from signal_client import DEFAULT_RPC_URL, send_reply
 
@@ -44,11 +57,17 @@ DEFAULT_PRUNE_INTERVAL = 3600
 LOG_FILE_MODE = 0o640
 
 _ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
-FIXED_COMMAND_IDS = ("on", "off", "status", "help")
+_ENTITY_RE = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
+_STATE_MARKER = "/api/states/"
 
-
-def _empty_commands() -> dict[str, bool]:
-    return {}
+# Standard-Kommandos fuer die Migration alter Konfigurationen.
+DEFAULT_COMMAND_TEXTS = (
+    ("on", "HO M an", ACTION_ON),
+    ("off", "HO M aus", ACTION_OFF),
+    ("status", "HO M Status", ACTION_STATUS),
+    ("help", "Hilfe", ACTION_HELP),
+    ("help_q", "?", ACTION_HELP),
+)
 
 
 def _is_http_url(value: str) -> bool:
@@ -80,9 +99,8 @@ class SignalConfig:
 class HomeAssistantConfig:
     enabled: bool
     timeout: int
-    actions: dict[str, str]
-    status_url: str | None = None
-    status_token: str | None = None
+    base_url: str | None = None
+    token: str | None = None
 
 
 @dataclass(frozen=True)
@@ -96,10 +114,10 @@ class Config:
     prune_interval: int
     allowlist: tuple[AllowEntry, ...]
     home_assistant: HomeAssistantConfig = field(
-        default_factory=lambda: HomeAssistantConfig(enabled=False, timeout=10, actions={})
+        default_factory=lambda: HomeAssistantConfig(enabled=False, timeout=10)
     )
     signal: SignalConfig = field(default_factory=SignalConfig)
-    commands: dict[str, bool] = field(default_factory=_empty_commands)
+    commands: tuple[Command, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -169,67 +187,192 @@ def _parse_signal(raw_obj: dict[str, Any]) -> SignalConfig:
     return SignalConfig(enabled=enabled, rpc_url=rpc_url, timeout=timeout)
 
 
-def _parse_commands(raw_obj: dict[str, Any]) -> dict[str, bool]:
-    section = raw_obj.get("commands")
-    if section is None:
-        return {}
-    if not isinstance(section, dict):
-        raise ConfigError("commands muss ein Objekt sein")
+def _entity_from_state_url(url: str | None) -> str | None:
+    if not url or _STATE_MARKER not in url:
+        return None
+    entity = url.split(_STATE_MARKER, 1)[1].strip("/")
+    return entity or None
 
-    section_obj = cast(dict[str, Any], section)
-    result: dict[str, bool] = {}
-    for key, value in section_obj.items():
-        if key not in FIXED_COMMAND_IDS:
-            raise ConfigError(f"commands.{key} ist kein festes Kommando")
-        if not isinstance(value, bool):
-            raise ConfigError(f"commands.{key} muss true oder false sein")
-        result[key] = value
+
+def _base_from_state_url(url: str | None) -> str | None:
+    if not url or _STATE_MARKER not in url:
+        return None
+    base = url.split(_STATE_MARKER, 1)[0]
+    return base or None
+
+
+def _legacy_status_url(raw_obj: dict[str, Any]) -> str | None:
+    section = raw_obj.get("home_assistant")
+    if not isinstance(section, dict):
+        return None
+    status = cast(dict[str, Any], section).get("status")
+    if not isinstance(status, dict):
+        return None
+    url = cast(dict[str, Any], status).get("url")
+    return url if isinstance(url, str) else None
+
+
+def _migrate_commands(section: dict[str, Any], entity_id: str | None) -> list[Any]:
+    result: list[Any] = []
+    for command_id, text, action in DEFAULT_COMMAND_TEXTS:
+        if action in ENTITY_ACTIONS and not entity_id:
+            continue
+        item: dict[str, Any] = {
+            "id": command_id,
+            "text": text,
+            "action": action,
+            "enabled": bool(section.get(command_id, True)),
+        }
+        if action in ENTITY_ACTIONS:
+            item["entity_id"] = entity_id
+        result.append(item)
     return result
 
 
-def _parse_actions(section_obj: dict[str, Any], enabled: bool) -> dict[str, str]:
-    actions_raw = section_obj.get("actions", {})
-    if not isinstance(actions_raw, dict):
-        raise ConfigError("home_assistant.actions muss ein Objekt sein")
-
-    actions_obj = cast(dict[str, Any], actions_raw)
-    actions: dict[str, str] = {}
-    for key in ("on", "off"):
-        value = actions_obj.get(key)
-        if value is None:
-            continue
-        if not isinstance(value, str) or not _is_http_url(value):
-            raise ConfigError(f"home_assistant.actions.{key} muss eine http(s)-URL sein")
-        actions[key] = value
-
-    if enabled:
-        missing = [key for key in ("on", "off") if key not in actions]
-        if missing:
-            raise ConfigError("home_assistant.actions fehlen: " + ", ".join(missing))
-    return actions
+def _command_identity(
+    obj: dict[str, Any], index: int
+) -> tuple[str, str, str, bool]:
+    command_id = obj.get("id")
+    if not isinstance(command_id, str) or not command_id.strip():
+        raise ConfigError(f"commands[{index}].id fehlt")
+    text = obj.get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise ConfigError(f"commands[{index}].text fehlt")
+    action = obj.get("action")
+    if action not in ACTIONS:
+        raise ConfigError(f"commands[{index}].action ist ungueltig")
+    enabled = obj.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ConfigError(f"commands[{index}].enabled muss true oder false sein")
+    return command_id.strip(), text.strip(), action, enabled
 
 
-def _parse_status(section_obj: dict[str, Any]) -> tuple[str | None, str | None]:
-    status_raw = section_obj.get("status")
-    if status_raw is None:
-        return None, None
-    if not isinstance(status_raw, dict):
-        raise ConfigError("home_assistant.status muss ein Objekt sein")
+def _command_entity(obj: dict[str, Any], index: int, action: str) -> str | None:
+    entity_id = obj.get("entity_id")
+    if entity_id is not None and not isinstance(entity_id, str):
+        raise ConfigError(f"commands[{index}].entity_id muss Text sein")
+    if action in ENTITY_ACTIONS and not entity_id:
+        raise ConfigError(f"commands[{index}].entity_id fehlt")
+    if not entity_id:
+        return None
+    if not _ENTITY_RE.match(entity_id):
+        raise ConfigError(f"commands[{index}].entity_id ist ungueltig")
+    domain = entity_id.split(".", 1)[0]
+    if action in (ACTION_ON, ACTION_OFF) and domain != "switch":
+        raise ConfigError(f"commands[{index}]: on/off nur fuer switch-Entitaeten")
+    if action == "set_value" and domain not in VALUE_SERVICES:
+        raise ConfigError(
+            f"commands[{index}]: set_value nur fuer climate, number, input_number"
+        )
+    return entity_id
 
-    status_obj = cast(dict[str, Any], status_raw)
-    url_value = status_obj.get("url")
-    token_value = status_obj.get("token")
-    if not isinstance(url_value, str) or not _is_http_url(url_value):
-        raise ConfigError("home_assistant.status.url muss eine http(s)-URL sein")
-    if not isinstance(token_value, str) or not token_value:
-        raise ConfigError("home_assistant.status.token fehlt")
-    return url_value, token_value
+
+def _command_range(
+    obj: dict[str, Any], index: int, text: str
+) -> tuple[float, float, str | None]:
+    min_value = obj.get("min")
+    max_value = obj.get("max")
+    unit = obj.get("unit")
+    if not isinstance(min_value, (int, float)) or isinstance(min_value, bool):
+        raise ConfigError(f"commands[{index}].min fehlt")
+    if not isinstance(max_value, (int, float)) or isinstance(max_value, bool):
+        raise ConfigError(f"commands[{index}].max fehlt")
+    if float(min_value) >= float(max_value):
+        raise ConfigError(f"commands[{index}].min muss kleiner als max sein")
+    if unit is not None and not isinstance(unit, str):
+        raise ConfigError(f"commands[{index}].unit muss Text sein")
+    if VALUE_PLACEHOLDER not in text:
+        raise ConfigError(f"commands[{index}].text braucht {VALUE_PLACEHOLDER}")
+    if not text.rstrip().endswith(VALUE_PLACEHOLDER):
+        raise ConfigError(f"commands[{index}].text muss mit {VALUE_PLACEHOLDER} enden")
+    return float(min_value), float(max_value), unit or None
+
+
+def _parse_command_item(item: Any, index: int) -> Command:
+    if not isinstance(item, dict):
+        raise ConfigError(f"commands[{index}] muss ein Objekt sein")
+    obj = cast(dict[str, Any], item)
+    command_id, text, action, enabled = _command_identity(obj, index)
+    entity_id = _command_entity(obj, index, action)
+    min_value: float | None = None
+    max_value: float | None = None
+    unit: str | None = None
+    if action == "set_value":
+        min_value, max_value, unit = _command_range(obj, index, text)
+    return Command(
+        id=command_id,
+        text=text,
+        action=action,
+        entity_id=entity_id,
+        min=min_value,
+        max=max_value,
+        unit=unit,
+        enabled=enabled,
+    )
+
+
+def _check_unique(commands: tuple[Command, ...]) -> None:
+    ids: set[str] = set()
+    texts: set[str] = set()
+    for command in commands:
+        if command.id in ids:
+            raise ConfigError(f"commands: doppelte id {command.id}")
+        ids.add(command.id)
+        key = normalize(command.text) or command.text.casefold()
+        if key in texts:
+            raise ConfigError(f"commands: doppelter Text {command.text}")
+        texts.add(key)
+
+
+def _parse_commands(raw_obj: dict[str, Any]) -> tuple[Command, ...]:
+    section = raw_obj.get("commands")
+    entity_id = _entity_from_state_url(_legacy_status_url(raw_obj))
+    if section is None:
+        section = _migrate_commands({}, entity_id)
+    elif isinstance(section, dict):
+        section = _migrate_commands(cast(dict[str, Any], section), entity_id)
+    if not isinstance(section, list):
+        raise ConfigError("commands muss eine Liste sein")
+    commands = tuple(
+        _parse_command_item(item, index)
+        for index, item in enumerate(cast(list[Any], section))
+    )
+    _check_unique(commands)
+    return commands
+
+
+def _legacy_token(section_obj: dict[str, Any]) -> Any:
+    status = section_obj.get("status")
+    if isinstance(status, dict):
+        return cast(dict[str, Any], status).get("token")
+    return None
+
+
+def _ha_credentials(
+    section_obj: dict[str, Any], raw_obj: dict[str, Any]
+) -> tuple[str | None, str | None]:
+    base_url = section_obj.get("base_url")
+    token = section_obj.get("token")
+    if base_url is None:
+        base_url = _base_from_state_url(_legacy_status_url(raw_obj))
+    if token is None:
+        token = _legacy_token(section_obj)
+    if base_url is not None and (
+        not isinstance(base_url, str) or not _is_http_url(base_url)
+    ):
+        raise ConfigError("home_assistant.base_url muss eine http(s)-URL sein")
+    if token is not None and not isinstance(token, str):
+        raise ConfigError("home_assistant.token muss Text sein")
+    return (
+        base_url if isinstance(base_url, str) else None,
+        token if isinstance(token, str) else None,
+    )
 
 
 def _parse_home_assistant(raw_obj: dict[str, Any]) -> HomeAssistantConfig:
     section = raw_obj.get("home_assistant")
     if section is None:
-        return HomeAssistantConfig(enabled=False, timeout=10, actions={})
+        return HomeAssistantConfig(enabled=False, timeout=10)
     if not isinstance(section, dict):
         raise ConfigError("home_assistant muss ein Objekt sein")
 
@@ -239,15 +382,15 @@ def _parse_home_assistant(raw_obj: dict[str, Any]) -> HomeAssistantConfig:
         raise ConfigError("home_assistant.enabled muss true oder false sein")
 
     timeout = _positive_int(section_obj, "timeout_seconds", 10)
-    actions = _parse_actions(section_obj, enabled)
-    status_url, status_token = _parse_status(section_obj)
+    base_url, token = _ha_credentials(section_obj, raw_obj)
+    if enabled and (not base_url or not token):
+        raise ConfigError("home_assistant.base_url und token fehlen")
 
     return HomeAssistantConfig(
         enabled=enabled,
         timeout=timeout,
-        actions=actions,
-        status_url=status_url,
-        status_token=status_token,
+        base_url=base_url,
+        token=token,
     )
 
 
@@ -396,9 +539,8 @@ def format_timestamp(ms: int, tz: tzinfo) -> str:
 def build_record(message: IncomingMessage, config: Config) -> dict[str, Any]:
     entry, reason = match_sender(config.allowlist, message.sender_number, message.sender_uuid)
     allowed = entry is not None
-    command = parse_command(message.text)
-    if command is not None and not config.commands.get(command, True):
-        command = None
+    parsed = parse_command(message.text, config.commands)
+    command = parsed.command if parsed is not None else None
     return {
         "ts": format_timestamp(message.received_ms, config.timezone),
         "received_ms": message.received_ms,
@@ -410,7 +552,8 @@ def build_record(message: IncomingMessage, config: Config) -> dict[str, Any]:
         "decision": "allowed" if allowed else "blocked",
         "reason": reason,
         "matched_label": entry.label if entry is not None else None,
-        "command": command,
+        "command": command.id if command is not None else None,
+        "value": parsed.value if parsed is not None else None,
         "actionable": allowed and command is not None,
         "action": None,
         "reply": None,
@@ -548,20 +691,30 @@ def _describe_action(action: Any) -> str:
     return "ok" if action_obj.get("ok") else f"fehlgeschlagen ({action_obj.get('detail')})"
 
 
+def _find_command(commands: tuple[Command, ...], command_id: Any) -> Command | None:
+    for command in commands:
+        if command.id == command_id:
+            return command
+    return None
+
+
 def _apply_action_and_reply(record: dict[str, Any], config: Config) -> None:
+    command = _find_command(config.commands, record.get("command"))
     result = perform_action(
-        record["command"],
-        config.home_assistant.actions,
-        config.home_assistant.status_url,
-        config.home_assistant.status_token,
+        command,
+        record.get("value"),
+        config.home_assistant.base_url,
+        config.home_assistant.token,
         config.home_assistant.timeout,
         config.home_assistant.enabled,
     )
     record["action"] = result.as_dict()
 
     reply = send_reply(
-        record["command"],
+        command,
+        record.get("value"),
         record["action"],
+        config.commands,
         record["sender_number"],
         config.signal.rpc_url,
         config.signal.timeout,
@@ -611,12 +764,48 @@ def _maybe_prune(config: Config, last_prune: float) -> float:
     return now
 
 
-def run(config: Config, stop: threading.Event, dry_run: bool = False) -> None:
+def _config_stamp(path: Path) -> tuple[int, int] | None:
+    """Liefert (mtime_ns, size) oder None, wenn die Datei fehlt."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
+def _reload_config(
+    path: Path, current: Config, stamp: tuple[int, int] | None
+) -> tuple[Config, tuple[int, int] | None]:
+    """Liest die Konfiguration neu, wenn sich die Datei geaendert hat.
+
+    Eine ungueltige Datei wird verworfen; die zuletzt gueltige Konfiguration
+    bleibt aktiv, damit ein Tippfehler den Dienst nicht lahmlegt.
+    """
+    new_stamp = _config_stamp(path)
+    if new_stamp is None or new_stamp == stamp:
+        return current, stamp
+    try:
+        new_config = load_config(path)
+    except ConfigError as exc:
+        LOG.warning("Konfiguration ungueltig, behalte alte: %s", exc)
+        return current, new_stamp
+    LOG.info("Konfiguration neu geladen")
+    return new_config, new_stamp
+
+
+def run(
+    config: Config,
+    stop: threading.Event,
+    dry_run: bool = False,
+    config_path: Path | None = None,
+) -> None:
     last_prune = 0.0
     if not dry_run:
         kept, dropped = prune_log(config.log_path, config.retention_days)
         LOG.info("Aufbewahrung beim Start: %d behalten, %d entfernt", kept, dropped)
         last_prune = time.monotonic()
+
+    stamp = _config_stamp(config_path) if config_path is not None else None
 
     events: "queue.Queue[dict[str, Any]]" = queue.Queue()
     reader = threading.Thread(
@@ -631,7 +820,12 @@ def run(config: Config, stop: threading.Event, dry_run: bool = False) -> None:
         try:
             payload = events.get(timeout=1.0)
         except queue.Empty:
+            if config_path is not None:
+                config, stamp = _reload_config(config_path, config, stamp)
             continue
+
+        if config_path is not None:
+            config, stamp = _reload_config(config_path, config, stamp)
 
         _process_payload(payload, config, dry_run)
 
@@ -694,7 +888,7 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
 
-    run(config, stop, dry_run=args.dry_run)
+    run(config, stop, dry_run=args.dry_run, config_path=args.config)
     return 0
 
 

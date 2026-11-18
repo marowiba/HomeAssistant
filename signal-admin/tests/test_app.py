@@ -31,8 +31,34 @@ def base_config():
         "signal": {"enabled": True, "rpc_url": "http://127.0.0.1:8080/api/v1/rpc"},
         "home_assistant": {
             "enabled": False,
-            "actions": {"on": "http://127.0.0.1/a", "off": "http://127.0.0.1/b"},
+            "base_url": "http://127.0.0.1:8123",
+            "token": "token",
         },
+        "commands": [
+            {
+                "id": "on",
+                "text": "HO M an",
+                "action": "on",
+                "entity_id": "switch.x",
+                "enabled": True,
+            },
+            {
+                "id": "off",
+                "text": "HO M aus",
+                "action": "off",
+                "entity_id": "switch.x",
+                "enabled": True,
+            },
+            {
+                "id": "status",
+                "text": "HO M Status",
+                "action": "status",
+                "entity_id": "switch.x",
+                "enabled": True,
+            },
+            {"id": "help", "text": "Hilfe", "action": "help", "enabled": True},
+            {"id": "help_q", "text": "?", "action": "help", "enabled": True},
+        ],
     }
 
 
@@ -208,12 +234,24 @@ class PageTests(AppTestBase):
         self.assertIn(b"HO M an", response.body)
         self.assertIn(b"Hilfe", response.body)
 
+    def test_commands_not_list(self):
+        data = base_config()
+        data["commands"] = "x"
+        self.config_path.write_text(json.dumps(data), encoding="utf-8")
+        self.assertEqual(self.get("/commands").status, 200)
+
     def test_events(self):
         response = self.get("/events?q=HO&decision=allowed&command=on&page=1")
         self.assertEqual(response.status, 200)
 
     def test_events_invalid_page(self):
         self.assertEqual(self.get("/events?page=abc").status, 200)
+
+    def test_events_commands_not_list(self):
+        data = base_config()
+        data["commands"] = "x"
+        self.config_path.write_text(json.dumps(data), encoding="utf-8")
+        self.assertEqual(self.get("/events").status, 200)
 
     def test_events_page_too_high(self):
         self.assertEqual(self.get("/events?page=99").status, 200)
@@ -334,11 +372,96 @@ class MutationTests(AppTestBase):
             "/commands/toggle", {"csrf": self.csrf, "command": "on", "enabled": "0"}
         )
         self.assertEqual(response.status, 303)
-        self.assertFalse(config_store.load_config(self.config_path)["commands"]["on"])
+        self.assertFalse(
+            config_store.load_config(self.config_path)["commands"][0]["enabled"]
+        )
 
     def test_commands_toggle_invalid(self):
         response = self.post(
             "/commands/toggle", {"csrf": self.csrf, "command": "foo", "enabled": "1"}
+        )
+        self.assertEqual(response.status, 200)
+
+    def test_commands_add(self):
+        response = self.post(
+            "/commands/add",
+            {
+                "csrf": self.csrf,
+                "text": "HO T {wert}",
+                "action": "set_value",
+                "entity_id": "climate.x",
+                "min": "5",
+                "max": "30",
+                "unit": "°C",
+                "enabled": "1",
+            },
+        )
+        self.assertEqual(response.status, 303)
+        commands = config_store.load_config(self.config_path)["commands"]
+        self.assertEqual(len(commands), 6)
+        self.assertEqual(commands[5]["action"], "set_value")
+
+    def test_commands_add_invalid(self):
+        response = self.post(
+            "/commands/add",
+            {
+                "csrf": self.csrf,
+                "text": "HO T",
+                "action": "set_value",
+                "entity_id": "climate.x",
+            },
+        )
+        self.assertEqual(response.status, 200)
+
+    def test_commands_add_bad_float(self):
+        response = self.post(
+            "/commands/add",
+            {
+                "csrf": self.csrf,
+                "text": "HO T {wert}",
+                "action": "set_value",
+                "entity_id": "climate.x",
+                "min": "abc",
+                "max": "30",
+                "enabled": "1",
+            },
+        )
+        self.assertEqual(response.status, 200)
+
+    def test_commands_update(self):
+        response = self.post(
+            "/commands/update",
+            {
+                "csrf": self.csrf,
+                "command": "on",
+                "text": "HO M AN",
+                "action": "on",
+                "entity_id": "switch.x",
+                "enabled": "1",
+            },
+        )
+        self.assertEqual(response.status, 303)
+        commands = config_store.load_config(self.config_path)["commands"]
+        self.assertEqual(commands[0]["text"], "HO M AN")
+
+    def test_commands_update_unknown(self):
+        response = self.post(
+            "/commands/update",
+            {"csrf": self.csrf, "command": "foo", "text": "X", "action": "help"},
+        )
+        self.assertEqual(response.status, 200)
+
+    def test_commands_delete(self):
+        response = self.post(
+            "/commands/delete", {"csrf": self.csrf, "command": "help_q"}
+        )
+        self.assertEqual(response.status, 303)
+        commands = config_store.load_config(self.config_path)["commands"]
+        self.assertEqual(len(commands), 4)
+
+    def test_commands_delete_unknown(self):
+        response = self.post(
+            "/commands/delete", {"csrf": self.csrf, "command": "foo"}
         )
         self.assertEqual(response.status, 200)
 
@@ -418,6 +541,39 @@ class MutationTests(AppTestBase):
             response = self.post(
                 "/commands/toggle",
                 {"csrf": self.csrf, "command": "on", "enabled": "0"},
+            )
+        self.assertEqual(response.status, 200)
+        self.assertIn(b"Schreibfehler", response.body)
+
+    def test_commands_add_write_error(self):
+        with mock.patch.object(config_store, "save_config", side_effect=OSError("x")):
+            response = self.post(
+                "/commands/add",
+                {"csrf": self.csrf, "text": "X", "action": "help", "enabled": "1"},
+            )
+        self.assertEqual(response.status, 200)
+        self.assertIn(b"Schreibfehler", response.body)
+
+    def test_commands_update_write_error(self):
+        with mock.patch.object(config_store, "save_config", side_effect=OSError("x")):
+            response = self.post(
+                "/commands/update",
+                {
+                    "csrf": self.csrf,
+                    "command": "on",
+                    "text": "HO M an",
+                    "action": "on",
+                    "entity_id": "switch.x",
+                    "enabled": "1",
+                },
+            )
+        self.assertEqual(response.status, 200)
+        self.assertIn(b"Schreibfehler", response.body)
+
+    def test_commands_delete_write_error(self):
+        with mock.patch.object(config_store, "save_config", side_effect=OSError("x")):
+            response = self.post(
+                "/commands/delete", {"csrf": self.csrf, "command": "help_q"}
             )
         self.assertEqual(response.status, 200)
         self.assertIn(b"Schreibfehler", response.body)

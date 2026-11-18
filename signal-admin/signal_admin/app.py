@@ -40,6 +40,7 @@ SECURITY_HEADERS = {
 LOGIN_PATH = "/login"
 DASHBOARD_PATH = "/dashboard"
 ALLOWLIST_PATH = "/allowlist"
+COMMANDS_PATH = "/commands"
 NOT_FOUND_MESSAGE = "Seite nicht gefunden"
 DEFAULT_RPC_URL = "http" + "://127.0.0.1:8080/api/v1/rpc"
 LOG = logging.getLogger("signal-admin")
@@ -69,6 +70,17 @@ def _error_text(exc: Exception) -> str:
     if isinstance(exc, OSError):
         return "Die Konfiguration konnte nicht gespeichert werden (Schreibfehler)."
     return str(exc)
+
+
+def _float_field(form: dict[str, list[str]], key: str) -> float | None:
+    values = form.get(key)
+    raw = (values[0] if values else "").strip().replace(",", ".")
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
 
 
 class AdminApp:
@@ -203,7 +215,7 @@ class AdminApp:
             return self._dashboard(user, csrf)
         if route == ALLOWLIST_PATH:
             return self._allowlist(user, csrf)
-        if route == "/commands":
+        if route == COMMANDS_PATH:
             return self._commands(user, csrf)
         if route == "/events":
             return self._events(query, user, csrf)
@@ -233,7 +245,13 @@ class AdminApp:
             return self._allowlist_update(form, user, csrf)
         if route == ALLOWLIST_PATH + "/delete":
             return self._allowlist_delete(form, user, csrf)
-        if route == "/commands/toggle":
+        if route == COMMANDS_PATH + "/add":
+            return self._commands_add(form, user, csrf)
+        if route == COMMANDS_PATH + "/update":
+            return self._commands_update(form, user, csrf)
+        if route == COMMANDS_PATH + "/delete":
+            return self._commands_delete(form, user, csrf)
+        if route == COMMANDS_PATH + "/toggle":
             return self._commands_toggle(form, user, csrf)
         if route == "/events/delete":
             return self._events_delete(form, user, csrf)
@@ -291,10 +309,8 @@ class AdminApp:
         )
         ha_section = config.get("home_assistant")
         ha = ha_section if isinstance(ha_section, dict) else {}
-        status_section = ha.get("status")
-        status_cfg = status_section if isinstance(status_section, dict) else {}
-        ha_url = self.ha_status_url or status_cfg.get("url")
-        ha_token = self.ha_status_token or status_cfg.get("token")
+        ha_url = self.ha_status_url or ha.get("base_url")
+        ha_token = self.ha_status_token or ha.get("token")
         return [
             ("signal-bridge", status_mod.check_service(self.service_unit)),
             ("signal-cli", status_mod.check_signal(rpc_url)),
@@ -397,13 +413,65 @@ class AdminApp:
         error: bool = False,
     ) -> Response:
         config = self._load_config()
-        commands = [
-            {**command, "enabled": config_store.command_enabled(config, command["id"])}
-            for command in config_store.FIXED_COMMANDS
-        ]
+        commands = config.get("commands", [])
+        if not isinstance(commands, list):
+            commands = []
         return _html(
             200, templates.commands_page(commands, user, csrf, flash, error)
         )
+
+    def _command_form_args(self, form: dict[str, list[str]]) -> tuple[Any, ...]:
+        return (
+            self._first(form, "text").strip(),
+            self._first(form, "action"),
+            self._first(form, "entity_id").strip() or None,
+            _float_field(form, "min"),
+            _float_field(form, "max"),
+            self._first(form, "unit").strip() or None,
+            self._first(form, "enabled") == "1",
+        )
+
+    def _commands_add(
+        self, form: dict[str, list[str]], user: str, csrf: str
+    ) -> Response:
+        try:
+            config = self._load_config()
+            updated = config_store.add_command(config, *self._command_form_args(form))
+            config_store.save_config(self.config_path, updated)
+        except (OSError, config_store.ConfigError) as exc:
+            return self._commands(user, csrf, _error_text(exc), True)
+        self.audit.append(
+            user, "command.add", self._first(form, "text"), now=self._now_ts()
+        )
+        return _redirect(COMMANDS_PATH)
+
+    def _commands_update(
+        self, form: dict[str, list[str]], user: str, csrf: str
+    ) -> Response:
+        command_id = self._first(form, "command")
+        try:
+            config = self._load_config()
+            updated = config_store.update_command(
+                config, command_id, *self._command_form_args(form)
+            )
+            config_store.save_config(self.config_path, updated)
+        except (OSError, config_store.ConfigError) as exc:
+            return self._commands(user, csrf, _error_text(exc), True)
+        self.audit.append(user, "command.update", command_id, now=self._now_ts())
+        return _redirect(COMMANDS_PATH)
+
+    def _commands_delete(
+        self, form: dict[str, list[str]], user: str, csrf: str
+    ) -> Response:
+        command_id = self._first(form, "command")
+        try:
+            config = self._load_config()
+            updated = config_store.delete_command(config, command_id)
+            config_store.save_config(self.config_path, updated)
+        except (OSError, config_store.ConfigError) as exc:
+            return self._commands(user, csrf, _error_text(exc), True)
+        self.audit.append(user, "command.delete", command_id, now=self._now_ts())
+        return _redirect(COMMANDS_PATH)
 
     def _commands_toggle(
         self, form: dict[str, list[str]], user: str, csrf: str
@@ -423,7 +491,7 @@ class AdminApp:
             "enabled" if enabled else "disabled",
             now=self._now_ts(),
         )
-        return _redirect("/commands")
+        return _redirect(COMMANDS_PATH)
 
     # --- Ereignisse ---
     def _events(
@@ -445,6 +513,10 @@ class AdminApp:
             page = max(1, int(self._first(query, "page", "1")))
         except ValueError:
             page = 1
+        config = self._load_config()
+        commands = config.get("commands", [])
+        if not isinstance(commands, list):
+            commands = []
         all_events = events_mod.read_events(self.log_path)
         filtered = events_mod.filter_events(
             all_events,
@@ -462,7 +534,16 @@ class AdminApp:
         return _html(
             200,
             templates.events_page(
-                page_events, filters, user, csrf, page, total_pages, total, flash, error
+                page_events,
+                filters,
+                commands,
+                user,
+                csrf,
+                page,
+                total_pages,
+                total,
+                flash,
+                error,
             ),
         )
 

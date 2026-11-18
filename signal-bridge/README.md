@@ -12,8 +12,8 @@ Die Begründung, die Schritte B0 bis B5 und die Verifikationsmatrix stehen in
 | Datei | Zweck |
 | :--- | :--- |
 | `bridge.py` | Dienst, nur Standardbibliothek |
-| `command_parser.py` | Erkennung der Home-Office-Kommandos und der Hilfe |
-| `ha_client.py` | Aufruf der Home-Assistant-Webhooks und Statusabfrage |
+| `command_parser.py` | Erkennung der konfigurierten Kommandos und Werte |
+| `ha_client.py` | Aufruf der Home-Assistant-REST-Dienste und Statusabfrage |
 | `signal_client.py` | Antworten über den signal-cli-Daemon |
 | `config.example.json` | Vorlage für `/etc/signal-bridge/config.json` |
 | `tests/test_bridge.py` | Unit-Tests |
@@ -53,7 +53,8 @@ sudo systemctl enable --now signal-bridge.service
 | `prune_interval_seconds` | Abstand der Aufbewahrungsbereinigung |
 | `allowlist` | Liste der freigegebenen Absender |
 | `signal` | Antworten über den Daemon, siehe unten |
-| `home_assistant` | Webhook-Anbindung, siehe unten |
+| `home_assistant` | REST-Anbindung, siehe unten |
+| `commands` | Liste der Kommandos, siehe unten |
 
 Ein Allowlist-Eintrag braucht `label` und mindestens eines von `number` oder
 `uuid`. Ist eine `uuid` gesetzt, muss sie übereinstimmen; eine abweichende UUID
@@ -98,10 +99,12 @@ entfällt, weil der Daemon im Single-Account-Modus läuft.
 
 | Situation | Antwort |
 | :--- | :--- |
-| `HO M an` erfolgreich | „Home Office ist eingeschaltet.“ |
-| `HO M aus` erfolgreich | „Home Office ist ausgeschaltet.“ |
-| `HO M status` | Zustand als Satz, sonst „Home Office hat den Zustand: …“ |
+| `HO M an` erfolgreich | „Eingeschaltet.“ |
+| `HO M aus` erfolgreich | „Ausgeschaltet.“ |
+| `HO M Status` | „Eingeschaltet.“, „Ausgeschaltet.“ oder „Zustand: …“ |
 | `Hilfe` oder `?` | Liste der verfügbaren Kommandos |
+| `HO T 21,5` erfolgreich | „Soll-Temperatur auf 21,5 °C gesetzt.“ |
+| Wert außerhalb `min`/`max` | „Fehler: Wert muss zwischen 5 und 30 liegen.“ |
 | Fehler | „Fehler: …“ mit verständlichem Grund |
 
 Nicht freigegebene Absender erhalten keine Antwort. Unbekannte Texte lösen
@@ -113,32 +116,46 @@ weder Aktion noch Antwort aus.
 "home_assistant": {
   "enabled": true,
   "timeout_seconds": 10,
-  "actions": {
-    "on": "http://<pi>:8123/api/webhook/<id-on>",
-    "off": "http://<pi>:8123/api/webhook/<id-off>"
-  },
-  "status": {
-    "url": "http://<pi>:8123/api/states/switch.haustechnik_shc41ccf4_matthias_im_home_office",
-    "token": "<long-lived-token>"
-  }
+  "base_url": "http://<pi>:8123",
+  "token": "<long-lived-token>"
 }
 ```
 
-Schaltbefehle laufen über Webhooks und brauchen keinen Token. Der Status wird
-über die REST-API gelesen, weil Webhooks in Home Assistant keine Daten
-zurückgeben können. Dafür ist ein dedizierter Nicht-Admin-Benutzer mit
-Long-Lived-Token vorgesehen; der Token wird nur für einen GET auf genau eine
-Entität verwendet und erscheint in keinem Log.
+Alle Aktionen laufen über die REST-API mit einem dedizierten
+Nicht-Admin-Benutzer und Long-Lived-Token. Der Dienstname wird nie aus
+Nutzereingaben gebildet, sondern aus der Entitäts-Domain fest zugeordnet:
 
-Fehlt der Abschnitt `status`, wird geschaltet, aber `HO M Status` meldet
-`Statusabfrage nicht konfiguriert`. Die Automationen liegen als Vorlage in
-`deploy/home-assistant/signal_ho_commands.yaml`.
+| Domain | Dienst | Nutzlast |
+| :--- | :--- | :--- |
+| `switch` | `switch.turn_on` / `switch.turn_off` | `entity_id` |
+| `climate` | `climate.set_temperature` | `entity_id`, `temperature` |
+| `number` | `number.set_value` | `entity_id`, `value` |
+| `input_number` | `input_number.set_value` | `entity_id`, `value` |
+
+Der Token erscheint in keinem Log und in keiner Antwort. Fehlt `base_url` oder
+`token`, meldet jede Aktion `Anbindung nicht konfiguriert`.
 
 ## Kommandos
 
-Akzeptiert werden ausschließlich `HO M an`, `HO M aus` und `HO M Status`,
-unabhängig von Groß- und Kleinschreibung und mit beliebigem Leerraum.
-`HO M an aus`, `HO M an!` oder `HO M` ergeben kein Kommando.
+Die Kommandos stehen in der Konfiguration unter `commands` und werden in der
+Weboberfläche verwaltet. Jedes Kommando hat `id`, `text`, `action`,
+`entity_id` und `enabled`. Aktionen sind `on`, `off`, `status`, `set_value`
+und `help`.
+
+Werte-Kommandos enthalten den Platzhalter `{wert}` am Ende, etwa
+`HO T {wert}`. Akzeptiert werden Ganzzahlen und Dezimalzahlen mit Komma oder
+Punkt (`21`, `21,5`, `21.5`). Der Wert muss zwischen `min` und `max` liegen.
+Passt das Präfix, ist der Rest aber keine Zahl, gilt das Kommando als nicht
+erkannt: keine Aktion, keine Antwort.
+
+Die Texte werden unabhängig von Groß- und Kleinschreibung und mit beliebigem
+Leerraum verglichen. `HO M an aus`, `HO M an!` oder `HO M` ergeben kein
+Kommando.
+
+Die Bridge prüft vor jeder Nachricht, ob sich die Konfigurationsdatei geändert
+hat, und liest sie dann neu ein. Änderungen aus der Weboberfläche wirken damit
+ohne Neustart. Eine ungültige Datei wird verworfen; die zuletzt gültige
+Konfiguration bleibt aktiv.
 
 ## Betrieb
 

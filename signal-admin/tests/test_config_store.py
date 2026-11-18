@@ -25,8 +25,34 @@ def base_config():
         "signal": {"enabled": True, "rpc_url": "http://127.0.0.1:8080/api/v1/rpc"},
         "home_assistant": {
             "enabled": False,
-            "actions": {"on": "http://127.0.0.1/a", "off": "http://127.0.0.1/b"},
+            "base_url": "http://127.0.0.1:8123",
+            "token": "token",
         },
+        "commands": [
+            {
+                "id": "on",
+                "text": "HO M an",
+                "action": "on",
+                "entity_id": "switch.x",
+                "enabled": True,
+            },
+            {
+                "id": "off",
+                "text": "HO M aus",
+                "action": "off",
+                "entity_id": "switch.x",
+                "enabled": True,
+            },
+            {
+                "id": "status",
+                "text": "HO M Status",
+                "action": "status",
+                "entity_id": "switch.x",
+                "enabled": True,
+            },
+            {"id": "help", "text": "Hilfe", "action": "help", "enabled": True},
+            {"id": "help_q", "text": "?", "action": "help", "enabled": True},
+        ],
     }
 
 
@@ -78,6 +104,10 @@ class LoadSaveTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 config_store.save_config(path, data)
         self.assertFalse(path.exists())
+
+    def test_restore_not_object(self):
+        with self.assertRaises(config_store.ConfigError):
+            config_store.restore_config(self.tmp / "config.json", b"[]")
 
     def test_backup_and_restore(self):
         path = self.tmp / "config.json"
@@ -169,24 +199,131 @@ class ValidateTests(unittest.TestCase):
                 config_store.validate_config(data),
             )
 
-    def test_commands_not_object(self):
+    def test_commands_not_list(self):
         data = base_config()
-        data["commands"] = []
-        self.assertIn("commands muss ein Objekt sein", config_store.validate_config(data))
+        data["commands"] = {}
+        self.assertIn("commands muss eine Liste sein", config_store.validate_config(data))
 
-    def test_unknown_command(self):
+    def test_command_not_object(self):
         data = base_config()
-        data["commands"] = {"foo": True}
+        data["commands"] = [42]
         self.assertIn(
-            "commands.foo ist kein festes Kommando", config_store.validate_config(data)
+            "commands[0] muss ein Objekt sein", config_store.validate_config(data)
         )
 
-    def test_command_not_bool(self):
+    def test_unknown_action(self):
         data = base_config()
-        data["commands"] = {"on": "yes"}
+        data["commands"][0]["action"] = "explode"
         self.assertIn(
-            "commands.on muss true oder false sein", config_store.validate_config(data)
+            "commands[0].action ist ungueltig", config_store.validate_config(data)
         )
+
+    def test_command_enabled_not_bool(self):
+        data = base_config()
+        data["commands"][0]["enabled"] = "yes"
+        self.assertIn(
+            "commands[0].enabled muss true oder false sein",
+            config_store.validate_config(data),
+        )
+
+    def test_command_missing_entity(self):
+        data = base_config()
+        data["commands"][0].pop("entity_id")
+        self.assertIn(
+            "commands[0].entity_id fehlt", config_store.validate_config(data)
+        )
+
+    def test_command_invalid_entity(self):
+        data = base_config()
+        data["commands"][0]["entity_id"] = "Switch X"
+        self.assertIn(
+            "commands[0].entity_id ist ungueltig", config_store.validate_config(data)
+        )
+
+    def test_on_requires_switch(self):
+        data = base_config()
+        data["commands"][0]["entity_id"] = "light.x"
+        self.assertIn(
+            "commands[0]: on/off nur fuer switch-Entitaeten",
+            config_store.validate_config(data),
+        )
+
+    def test_set_value_requires_placeholder(self):
+        data = base_config()
+        data["commands"].append(
+            {
+                "id": "t",
+                "text": "HO T",
+                "action": "set_value",
+                "entity_id": "climate.x",
+                "min": 5,
+                "max": 30,
+            }
+        )
+        self.assertIn(
+            "commands[5].text braucht genau ein {wert}",
+            config_store.validate_config(data),
+        )
+
+    def test_set_value_requires_range(self):
+        data = base_config()
+        data["commands"].append(
+            {
+                "id": "t",
+                "text": "HO T {wert}",
+                "action": "set_value",
+                "entity_id": "climate.x",
+            }
+        )
+        errors = config_store.validate_config(data)
+        self.assertIn("commands[5].min fehlt", errors)
+        self.assertIn("commands[5].max fehlt", errors)
+
+    def test_set_value_range_order(self):
+        data = base_config()
+        data["commands"].append(
+            {
+                "id": "t",
+                "text": "HO T {wert}",
+                "action": "set_value",
+                "entity_id": "climate.x",
+                "min": 30,
+                "max": 5,
+            }
+        )
+        self.assertIn(
+            "commands[5].min muss kleiner als max sein",
+            config_store.validate_config(data),
+        )
+
+    def test_set_value_domain(self):
+        data = base_config()
+        data["commands"].append(
+            {
+                "id": "t",
+                "text": "HO T {wert}",
+                "action": "set_value",
+                "entity_id": "switch.x",
+                "min": 5,
+                "max": 30,
+            }
+        )
+        self.assertIn(
+            "commands[5]: set_value nur fuer climate, number, input_number",
+            config_store.validate_config(data),
+        )
+
+    def test_duplicate_text(self):
+        data = base_config()
+        data["commands"][1]["text"] = "HO M an"
+        self.assertIn(
+            "commands[1].text ist doppelt", config_store.validate_config(data)
+        )
+
+    def test_duplicate_id(self):
+        data = base_config()
+        data["commands"][1]["id"] = "on"
+        self.assertIn("commands[1].id ist doppelt", config_store.validate_config(data))
 
     def test_home_assistant_not_object(self):
         data = base_config()
@@ -203,50 +340,127 @@ class ValidateTests(unittest.TestCase):
             config_store.validate_config(data),
         )
 
-    def test_actions_not_object(self):
+    def test_base_url_invalid(self):
         data = base_config()
-        data["home_assistant"] = {"actions": []}
+        data["home_assistant"] = {"base_url": "ftp://x"}
         self.assertIn(
-            "home_assistant.actions muss ein Objekt sein",
+            "home_assistant.base_url muss eine http(s)-URL sein",
             config_store.validate_config(data),
         )
 
-    def test_action_invalid_url(self):
+    def test_token_not_text(self):
         data = base_config()
-        data["home_assistant"] = {"actions": {"on": "ftp://x"}}
+        data["home_assistant"] = {"enabled": False, "token": 5}
         self.assertIn(
-            "home_assistant.actions.on muss eine http(s)-URL sein",
+            "home_assistant.token muss Text sein", config_store.validate_config(data)
+        )
+
+    def test_command_missing_id(self):
+        data = base_config()
+        data["commands"][0].pop("id")
+        self.assertIn("commands[0].id fehlt", config_store.validate_config(data))
+
+    def test_command_missing_text(self):
+        data = base_config()
+        data["commands"][0].pop("text")
+        self.assertIn("commands[0].text fehlt", config_store.validate_config(data))
+
+    def test_command_entity_not_text(self):
+        data = base_config()
+        data["commands"][0]["entity_id"] = 5
+        self.assertIn(
+            "commands[0].entity_id muss Text sein", config_store.validate_config(data)
+        )
+
+    def test_set_value_placeholder_not_at_end(self):
+        data = base_config()
+        data["commands"].append(
+            {
+                "id": "t",
+                "text": "HO T {wert} Grad",
+                "action": "set_value",
+                "entity_id": "climate.x",
+                "min": 5,
+                "max": 30,
+            }
+        )
+        self.assertIn(
+            "commands[5].text muss mit {wert} enden",
             config_store.validate_config(data),
         )
 
-    def test_enabled_missing_actions(self):
+    def test_placeholder_in_literal(self):
         data = base_config()
-        data["home_assistant"] = {"enabled": True, "actions": {"on": "http://x/a"}}
+        data["commands"][0]["text"] = "HO M {wert}"
         self.assertIn(
-            "home_assistant.actions fehlen: off", config_store.validate_config(data)
-        )
-
-    def test_status_not_object(self):
-        data = base_config()
-        data["home_assistant"] = {"status": []}
-        self.assertIn(
-            "home_assistant.status muss ein Objekt sein",
+            "commands[0].text darf {wert} nur bei set_value enthalten",
             config_store.validate_config(data),
         )
 
-    def test_status_url_invalid(self):
+    def test_set_value_unit_not_text(self):
         data = base_config()
-        data["home_assistant"] = {"status": {"url": "ftp://x", "token": "t"}}
+        data["commands"].append(
+            {
+                "id": "t",
+                "text": "HO T {wert}",
+                "action": "set_value",
+                "entity_id": "climate.x",
+                "min": 5,
+                "max": 30,
+                "unit": 5,
+            }
+        )
         self.assertIn(
-            "home_assistant.status.url muss eine http(s)-URL sein",
+            "commands[5].unit muss Text sein", config_store.validate_config(data)
+        )
+
+    def test_migrate_legacy(self):
+        data = base_config()
+        data["commands"] = {"on": False}
+        data["home_assistant"] = {
+            "enabled": True,
+            "status": {
+                "url": "http://127.0.0.1:8123/api/states/switch.x",
+                "token": "t",
+            },
+        }
+        migrated = config_store.migrate_config(data)
+        self.assertEqual(
+            [item["id"] for item in migrated["commands"]],
+            ["on", "off", "status", "help", "help_q"],
+        )
+        self.assertFalse(migrated["commands"][0]["enabled"])
+        self.assertEqual(migrated["commands"][0]["entity_id"], "switch.x")
+        self.assertEqual(
+            migrated["home_assistant"]["base_url"], "http://127.0.0.1:8123"
+        )
+        self.assertEqual(migrated["home_assistant"]["token"], "t")
+        self.assertNotIn("status", migrated["home_assistant"])
+
+    def test_migrate_without_status_url(self):
+        data = base_config()
+        data["commands"] = {"on": True}
+        data["home_assistant"] = {"enabled": False}
+        migrated = config_store.migrate_config(data)
+        self.assertEqual(
+            [item["id"] for item in migrated["commands"]], ["help", "help_q"]
+        )
+        self.assertNotIn("base_url", migrated["home_assistant"])
+
+    def test_enabled_missing_base_url(self):
+        data = base_config()
+        data["home_assistant"] = {"enabled": True, "token": "t"}
+        self.assertIn(
+            "home_assistant.base_url und token fehlen",
             config_store.validate_config(data),
         )
 
-    def test_status_token_missing(self):
+    def test_enabled_missing_token(self):
         data = base_config()
-        data["home_assistant"] = {"status": {"url": "http://x/a"}}
+        data["home_assistant"] = {"enabled": True, "base_url": "http://x"}
         self.assertIn(
-            "home_assistant.status.token fehlt", config_store.validate_config(data)
+            "home_assistant.base_url und token fehlen",
+            config_store.validate_config(data),
         )
 
     def test_signal_not_object(self):
@@ -331,26 +545,65 @@ class MutationTests(unittest.TestCase):
 
     def test_set_command_enabled(self):
         updated = config_store.set_command_enabled(base_config(), "on", False)
-        self.assertFalse(updated["commands"]["on"])
+        self.assertFalse(updated["commands"][0]["enabled"])
 
     def test_set_command_unknown(self):
         data = base_config()
         with self.assertRaises(config_store.ConfigError):
             config_store.set_command_enabled(data, "foo", True)
 
-    def test_set_command_commands_not_dict(self):
+    def test_set_command_commands_not_list(self):
         data = base_config()
-        data["commands"] = []
+        data["commands"] = {}
         with self.assertRaises(config_store.ConfigError):
             config_store.set_command_enabled(data, "on", True)
 
     def test_command_enabled(self):
         self.assertTrue(config_store.command_enabled(base_config(), "on"))
         data = base_config()
-        data["commands"] = {"on": False}
+        data["commands"][0]["enabled"] = False
         self.assertFalse(config_store.command_enabled(data, "on"))
         data["commands"] = []
         self.assertTrue(config_store.command_enabled(data, "on"))
+
+    def test_add_command(self):
+        updated = config_store.add_command(
+            base_config(), "HO T {wert}", "set_value", "climate.x", 5, 30, "°C"
+        )
+        self.assertEqual(len(updated["commands"]), 6)
+        self.assertEqual(updated["commands"][5]["action"], "set_value")
+        self.assertTrue(updated["commands"][5]["id"].startswith("cmd_"))
+
+    def test_add_command_invalid(self):
+        data = base_config()
+        with self.assertRaises(config_store.ConfigError):
+            config_store.add_command(data, "HO T", "set_value", "climate.x", 5, 30)
+
+    def test_update_command(self):
+        updated = config_store.update_command(
+            base_config(), "on", "HO M AN", "on", "switch.x"
+        )
+        self.assertEqual(updated["commands"][0]["text"], "HO M AN")
+
+    def test_update_command_unknown(self):
+        data = base_config()
+        with self.assertRaises(config_store.ConfigError):
+            config_store.update_command(data, "foo", "X", "help")
+
+    def test_delete_command(self):
+        updated = config_store.delete_command(base_config(), "help_q")
+        self.assertEqual(len(updated["commands"]), 4)
+
+    def test_delete_command_unknown(self):
+        data = base_config()
+        with self.assertRaises(config_store.ConfigError):
+            config_store.delete_command(data, "foo")
+
+    def test_add_command_commands_not_list(self):
+        data = base_config()
+        data["commands"] = {}
+        with self.assertRaises(config_store.ConfigError):
+            config_store.add_command(data, "X", "help")
 
     def test_set_retention(self):
         updated = config_store.set_retention(base_config(), 7)

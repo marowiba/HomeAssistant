@@ -39,12 +39,20 @@ Nummer oder UUID.
 
 ## Kommandos
 
-- Feste Kommandos: `HO M an`, `HO M aus`, `HO M Status`, `Hilfe` und `?`.
-- `Hilfe` oder `?` sendet eine Übersicht der unterstützten Kommandos.
-- Ein-/Ausschalten über „Deaktivieren“ bzw. „Aktivieren“.
-- Es lassen sich keine weiteren Kommandos oder Home-Assistant-Dienste anlegen.
-- Nach dem Ändern die Bridge neu starten:
-  `sudo systemctl restart signal-bridge.service`.
+- Die Tabelle zeigt alle Kommandos mit Text, Aktion, Entität, Bereich und
+  Status.
+- **Neues Kommando anlegen:** Signal-Text, Aktion, Entität, optional `min`,
+  `max` und Einheit, „Hinzufügen“.
+- **Bearbeiten:** Felder in der Zeile ändern, „Speichern“.
+- **Löschen:** „Löschen“ und bestätigen.
+- **Aktivieren/Deaktivieren:** Häkchen „aktiv“ in der Zeile.
+- Aktionen: `on`, `off`, `status`, `set_value`, `help`.
+- Werte-Kommandos brauchen den Platzhalter `{wert}` am Ende, z. B.
+  `HO T {wert}`. Erlaubt sind `climate`, `number` und `input_number`.
+- `on` und `off` sind nur für `switch`-Entitäten erlaubt.
+- `Hilfe` oder `?` sendet eine Übersicht der aktiven Kommandos.
+- Änderungen werden von der Bridge automatisch übernommen; ein Neustart ist
+  nicht nötig.
 
 ## Ereignislog
 
@@ -86,5 +94,5 @@ Nummer oder UUID.
 | :--- | :--- |
 | „Seite nicht erreichbar“ | `systemctl status signal-admin.service` prüfen |
 | Anmeldung schlägt fehl | Benutzer `admin` und Passwort prüfen; ggf. Passwort neu setzen (siehe `deploy/signal-admin/README.md`) |
-| Kommando-Änderung wirkt nicht | `sudo systemctl restart signal-bridge.service` |
+| Kommando-Änderung wirkt nicht | Konfiguration prüfen: `sudo python3 /opt/signal-bridge/bridge.py --config /etc/signal-bridge/config.json --check-config` |
 | Status „Fehler“ | Verbindung zu `signal-cli` bzw. Home Assistant prüfen |

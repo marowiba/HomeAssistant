@@ -50,11 +50,55 @@ class TemplateTests(unittest.TestCase):
 
     def test_commands(self):
         html = templates.commands_page(
-            [{"id": "on", "text": "HO M an", "description": "an", "enabled": True}],
+            [
+                {
+                    "id": "on",
+                    "text": "HO M an",
+                    "action": "on",
+                    "entity_id": "switch.x",
+                    "enabled": True,
+                },
+                {
+                    "id": "t",
+                    "text": "HO T {wert}",
+                    "action": "set_value",
+                    "entity_id": "climate.x",
+                    "min": 5.0,
+                    "max": 30.0,
+                    "unit": "°C",
+                    "enabled": False,
+                },
+            ],
             "admin",
             "csrf",
         )
         self.assertIn("HO M an", html)
+        self.assertIn("HO T {wert}", html)
+        self.assertIn("5 bis 30 °C", html)
+        self.assertIn("Löschen", html)
+
+    def test_commands_empty(self):
+        html = templates.commands_page([], "admin", "csrf")
+        self.assertIn("Keine Kommandos", html)
+
+    def test_commands_int_range(self):
+        html = templates.commands_page(
+            [
+                {
+                    "id": "t",
+                    "text": "HO T {wert}",
+                    "action": "set_value",
+                    "entity_id": "climate.x",
+                    "min": 5,
+                    "max": 30,
+                    "unit": "",
+                    "enabled": True,
+                }
+            ],
+            "admin",
+            "csrf",
+        )
+        self.assertIn("5 bis 30", html)
 
     def test_events(self):
         html = templates.events_page(
@@ -69,6 +113,7 @@ class TemplateTests(unittest.TestCase):
                 }
             ],
             {"q": "x", "decision": "allowed", "command": "on", "from": "", "to": ""},
+            [{"id": "on", "text": "HO M an"}],
             "admin",
             "csrf",
             1,
@@ -79,7 +124,7 @@ class TemplateTests(unittest.TestCase):
         self.assertIn("Weiter", html)
 
     def test_events_empty(self):
-        html = templates.events_page([], {}, "admin", "csrf", 1, 1, 0)
+        html = templates.events_page([], {}, [], "admin", "csrf", 1, 1, 0)
         self.assertIn("Keine Ereignisse", html)
 
     def test_event_detail(self):

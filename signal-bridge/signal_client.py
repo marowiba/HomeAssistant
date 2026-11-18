@@ -1,4 +1,4 @@
-"""HAD-0005: Antworten ueber den signal-cli-Daemon senden.
+"""HAD-0005/HAD-0010: Antworten ueber den signal-cli-Daemon senden.
 
 Die Bridge sendet ausschliesslich Antworten auf erkannte Kommandos
 freigegebener Absender. Der Sendepfad laeuft ueber die JSON-RPC-Schnittstelle
@@ -13,12 +13,21 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, cast
 
-from command_parser import build_help_text
+from command_parser import (
+    ACTION_HELP,
+    ACTION_OFF,
+    ACTION_ON,
+    ACTION_SET_VALUE,
+    ACTION_STATUS,
+    Command,
+    build_help_text,
+    format_value,
+)
 
 DEFAULT_RPC_URL = "http://127.0.0.1:8080/api/v1/rpc"
 
-REPLY_ON = "Home Office ist eingeschaltet."
-REPLY_OFF = "Home Office ist ausgeschaltet."
+REPLY_ON = "Eingeschaltet."
+REPLY_OFF = "Ausgeschaltet."
 
 
 @dataclass(frozen=True)
@@ -43,44 +52,85 @@ def _friendly_error(detail: str | None) -> str:
         return "Home Assistant ist nicht erreichbar."
     if detail == "Zeitueberschreitung":
         return "Home Assistant antwortet nicht."
-    if detail == "Statusabfrage nicht konfiguriert":
-        return "Die Statusabfrage ist nicht eingerichtet."
     if detail == "Anbindung deaktiviert":
         return "Die Home-Assistant-Anbindung ist deaktiviert."
+    if detail == "Anbindung nicht konfiguriert":
+        return "Die Home-Assistant-Anbindung ist nicht eingerichtet."
+    if detail == "keine Entitaet konfiguriert":
+        return "Fuer dieses Kommando ist keine Entitaet hinterlegt."
+    if detail == "Aktion nur fuer switch-Entitaeten":
+        return "Diese Aktion ist nur fuer Schalter erlaubt."
+    if detail == "Werte nur fuer climate, number, input_number":
+        return "Fuer diese Entitaet sind keine Werte erlaubt."
+    if detail == "kein Wert erkannt":
+        return "Der Wert konnte nicht gelesen werden."
     return f"Die Aktion ist fehlgeschlagen ({detail})."
 
 
-def build_reply(command: str | None, action: Any) -> str | None:
+def _range_reply(command: Command) -> str:
+    return (
+        f"Fehler: Wert muss zwischen {format_value(command.min)} und "
+        f"{format_value(command.max)} liegen."
+    )
+
+
+def _value_reply(command: Command, value: float | None) -> str:
+    domain = (command.entity_id or "").split(".", 1)[0]
+    unit = f" {command.unit}" if command.unit else ""
+    if domain == "climate":
+        return f"Soll-Temperatur auf {format_value(value)}{unit} gesetzt."
+    return f"Wert auf {format_value(value)}{unit} gesetzt."
+
+
+def _status_reply(state: Any) -> str:
+    if state == "on":
+        return REPLY_ON
+    if state == "off":
+        return REPLY_OFF
+    if isinstance(state, str) and state:
+        return f"Zustand: {state}."
+    return "Fehler: Der Zustand ist unbekannt."
+
+
+def _success_reply(
+    command: Command, value: float | None, action_obj: dict[str, Any]
+) -> str | None:
+    if command.action == ACTION_STATUS:
+        return _status_reply(action_obj.get("detail"))
+    if command.action == ACTION_ON:
+        return REPLY_ON
+    if command.action == ACTION_OFF:
+        return REPLY_OFF
+    if command.action == ACTION_SET_VALUE:
+        return _value_reply(command, value)
+    return None
+
+
+def build_reply(
+    command: Command | None,
+    value: float | None,
+    action: Any,
+    commands: tuple[Command, ...],
+) -> str | None:
     """Erzeugt die Antwort auf ein Kommando. None bedeutet: nicht antworten."""
     if command is None or not isinstance(action, dict):
         return None
 
     action_obj = cast(dict[str, Any], action)
 
-    if command == "help":
-        return build_help_text()
+    if command.action == ACTION_HELP:
+        return build_help_text(commands)
 
     if not action_obj.get("attempted"):
-        return f"Fehler: {_friendly_error(action_obj.get('detail'))}"
+        detail = action_obj.get("detail")
+        if detail == "Wert ausserhalb des Bereichs":
+            return _range_reply(command)
+        return f"Fehler: {_friendly_error(detail)}"
 
     if not action_obj.get("ok"):
         return f"Fehler: {_friendly_error(action_obj.get('detail'))}"
 
-    if command == "status":
-        state = action_obj.get("detail")
-        if state == "on":
-            return REPLY_ON
-        if state == "off":
-            return REPLY_OFF
-        if isinstance(state, str) and state:
-            return f"Home Office hat den Zustand: {state}."
-        return "Fehler: Der Schalterzustand ist unbekannt."
-
-    if command == "on":
-        return REPLY_ON
-    if command == "off":
-        return REPLY_OFF
-    return None
+    return _success_reply(command, value, action_obj)
 
 
 def _build_send_request(
@@ -167,8 +217,10 @@ def send_message(
 
 
 def send_reply(
-    command: str | None,
+    command: Command | None,
+    value: float | None,
     action: Any,
+    commands: tuple[Command, ...],
     recipient: str | None,
     rpc_url: str,
     timeout: int,
@@ -178,7 +230,7 @@ def send_reply(
     if not enabled:
         return ReplyResult(attempted=False, ok=None, detail="Antworten deaktiviert")
 
-    text = build_reply(command, action)
+    text = build_reply(command, value, action, commands)
     if text is None:
         return ReplyResult(attempted=False, ok=None, detail="keine Antwort vorgesehen")
 

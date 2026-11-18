@@ -22,13 +22,52 @@
   "home_assistant": {
     "enabled": false,
     "timeout_seconds": 10,
-    "actions": {
-      "on": "http://192.168.1.10:8123/api/webhook/REPLACE_ON",
-      "off": "http://192.168.1.10:8123/api/webhook/REPLACE_OFF"
+    "base_url": "http://192.168.1.10:8123",
+    "token": "REPLACE_TOKEN"
+  },
+  "commands": [
+    {
+      "id": "on",
+      "text": "HO M an",
+      "action": "on",
+      "entity_id": "switch.haustechnik_shc41ccf4_matthias_im_home_office",
+      "enabled": true
     },
-    "status": {
-      "url": "http://192.168.1.10:8123/api/states/switch.haustechnik_shc41ccf4_matthias_im_home_office",
-      "token": "REPLACE_TOKEN"
+    {
+      "id": "off",
+      "text": "HO M aus",
+      "action": "off",
+      "entity_id": "switch.haustechnik_shc41ccf4_matthias_im_home_office",
+      "enabled": true
+    },
+    {
+      "id": "status",
+      "text": "HO M Status",
+      "action": "status",
+      "entity_id": "switch.haustechnik_shc41ccf4_matthias_im_home_office",
+      "enabled": true
+    },
+    {
+      "id": "help",
+      "text": "Hilfe",
+      "action": "help",
+      "enabled": true
+    },
+    {
+      "id": "help_q",
+      "text": "?",
+      "action": "help",
+      "enabled": true
+    },
+    {
+      "id": "ho_t_set",
+      "text": "HO T {wert}",
+      "action": "set_value",
+      "entity_id": "climate.wohnzimmer",
+      "min": 5.0,
+      "max": 30.0,
+      "unit": "°C",
+      "enabled": false
     }
-  }
+  ]
 }
