@@ -14,3 +14,6 @@ tests/sast/reports/
 coverage.xml
 .coverage
 .scannerwork/
+
+# Deployment-Artefakte (lokal erzeugt, nicht versioniert)
+*-deploy.tar.gz

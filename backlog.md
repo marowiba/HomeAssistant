@@ -26,4 +26,3 @@ werden nach `backlog_done.md` verschoben und chronologisch absteigend (neuste ob
 
 - Weitere Home-Assistant-Entitäten über eigene, fest definierte Signal-Kommandos
   integrieren.
-- Eine Signal-Hilfe-Nachricht mit den unterstützten Kommandos ergänzen.

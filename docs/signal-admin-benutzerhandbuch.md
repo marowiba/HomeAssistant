@@ -39,7 +39,8 @@ Nummer oder UUID.
 
 ## Kommandos
 
-- Feste Kommandos: `HO M an`, `HO M aus`, `HO M Status`.
+- Feste Kommandos: `HO M an`, `HO M aus`, `HO M Status`, `Hilfe` und `?`.
+- `Hilfe` oder `?` sendet eine Übersicht der unterstützten Kommandos.
 - Ein-/Ausschalten über „Deaktivieren“ bzw. „Aktivieren“.
 - Es lassen sich keine weiteren Kommandos oder Home-Assistant-Dienste anlegen.
 - Nach dem Ändern die Bridge neu starten:

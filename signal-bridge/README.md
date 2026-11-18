@@ -12,7 +12,7 @@ Die Begründung, die Schritte B0 bis B5 und die Verifikationsmatrix stehen in
 | Datei | Zweck |
 | :--- | :--- |
 | `bridge.py` | Dienst, nur Standardbibliothek |
-| `command_parser.py` | Erkennung der drei Home-Office-Kommandos |
+| `command_parser.py` | Erkennung der Home-Office-Kommandos und der Hilfe |
 | `ha_client.py` | Aufruf der Home-Assistant-Webhooks und Statusabfrage |
 | `signal_client.py` | Antworten über den signal-cli-Daemon |
 | `config.example.json` | Vorlage für `/etc/signal-bridge/config.json` |
@@ -71,7 +71,7 @@ JSON Lines, ein Objekt pro Zeile:
 `decision` ist `allowed` oder `blocked`, `reason` ist `allowlist`,
 `not_in_allowlist` oder `sender_disabled`.
 
-`command` ist `on`, `off`, `status` oder `null`. `actionable` ist nur dann
+`command` ist `on`, `off`, `status`, `help` oder `null`. `actionable` ist nur dann
 `true`, wenn der Absender freigegeben **und** ein Kommando erkannt wurde. Nur
 dieses Feld entscheidet über eine Aktion.
 
@@ -101,6 +101,7 @@ entfällt, weil der Daemon im Single-Account-Modus läuft.
 | `HO M an` erfolgreich | „Home Office ist eingeschaltet.“ |
 | `HO M aus` erfolgreich | „Home Office ist ausgeschaltet.“ |
 | `HO M status` | Zustand als Satz, sonst „Home Office hat den Zustand: …“ |
+| `Hilfe` oder `?` | Liste der verfügbaren Kommandos |
 | Fehler | „Fehler: …“ mit verständlichem Grund |
 
 Nicht freigegebene Absender erhalten keine Antwort. Unbekannte Texte lösen

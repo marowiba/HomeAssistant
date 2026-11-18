@@ -13,6 +13,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, cast
 
+from command_parser import build_help_text
+
 DEFAULT_RPC_URL = "http://127.0.0.1:8080/api/v1/rpc"
 
 REPLY_ON = "Home Office ist eingeschaltet."
@@ -54,6 +56,9 @@ def build_reply(command: str | None, action: Any) -> str | None:
         return None
 
     action_obj = cast(dict[str, Any], action)
+
+    if command == "help":
+        return build_help_text()
 
     if not action_obj.get("attempted"):
         return f"Fehler: {_friendly_error(action_obj.get('detail'))}"

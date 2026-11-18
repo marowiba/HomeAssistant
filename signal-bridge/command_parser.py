@@ -11,12 +11,30 @@ from __future__ import annotations
 COMMAND_ON = "on"
 COMMAND_OFF = "off"
 COMMAND_STATUS = "status"
+COMMAND_HELP = "help"
 
 COMMANDS: dict[str, str] = {
     "ho m an": COMMAND_ON,
     "ho m aus": COMMAND_OFF,
     "ho m status": COMMAND_STATUS,
+    "hilfe": COMMAND_HELP,
+    "?": COMMAND_HELP,
 }
+
+COMMAND_DESCRIPTIONS = (
+    ("HO M an", "Home Office einschalten"),
+    ("HO M aus", "Home Office ausschalten"),
+    ("HO M Status", "Status abfragen"),
+    ("Hilfe / ?", "diese Hilfe anzeigen"),
+)
+
+
+def build_help_text() -> str:
+    """Erzeugt die Hilfe-Nachricht aus der festen Kommandoliste."""
+    lines = ["Verfuegbare Kommandos:"]
+    for text, description in COMMAND_DESCRIPTIONS:
+        lines.append(f"- {text}: {description}")
+    return "\n".join(lines)
 
 
 def normalize(text: str | None) -> str | None:

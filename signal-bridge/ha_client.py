@@ -92,6 +92,8 @@ def perform_action(
     """
     if command is None:
         return ActionResult(attempted=False, ok=None, detail="kein Kommando")
+    if command == "help":
+        return ActionResult(attempted=False, ok=None, detail="keine Aktion")
     if not enabled:
         return ActionResult(attempted=False, ok=None, detail="Anbindung deaktiviert")
 

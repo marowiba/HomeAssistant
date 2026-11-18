@@ -206,6 +206,7 @@ class PageTests(AppTestBase):
         response = self.get("/commands")
         self.assertEqual(response.status, 200)
         self.assertIn(b"HO M an", response.body)
+        self.assertIn(b"Hilfe", response.body)
 
     def test_events(self):
         response = self.get("/events?q=HO&decision=allowed&command=on&page=1")

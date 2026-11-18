@@ -208,7 +208,7 @@ def commands_page(
     body = "".join(rows)
     content = (
         '<section class="panel"><h2>Feste Kommandos</h2>'
-        '<p class="muted">Nur diese drei Kommandos sind zulaessig. Es lassen sich '
+        '<p class="muted">Nur diese vier Kommandos sind zulaessig. Es lassen sich '
         "keine frei ausfuehrbaren Home-Assistant-Dienste oder Templates anlegen.</p>"
         "<table><thead><tr><th>Kommando</th><th>Bedeutung</th><th>Status</th>"
         f"<th>Aktion</th></tr></thead><tbody>{body}</tbody></table></section>"

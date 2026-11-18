@@ -44,7 +44,7 @@ DEFAULT_PRUNE_INTERVAL = 3600
 LOG_FILE_MODE = 0o640
 
 _ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
-FIXED_COMMAND_IDS = ("on", "off", "status")
+FIXED_COMMAND_IDS = ("on", "off", "status", "help")
 
 
 def _empty_commands() -> dict[str, bool]:

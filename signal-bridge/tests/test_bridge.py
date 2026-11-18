@@ -280,6 +280,11 @@ class RecordTests(unittest.TestCase):
         self.assertIsNone(record["command"])
         self.assertFalse(record["actionable"])
 
+    def test_help_is_actionable(self):
+        record = bridge.build_record(self.message(text="Hilfe"), self.config())
+        self.assertEqual(record["command"], "help")
+        self.assertTrue(record["actionable"])
+
 
 class CommandParserTests(unittest.TestCase):
     def test_exact_commands(self):
@@ -320,6 +325,18 @@ class CommandParserTests(unittest.TestCase):
         self.assertEqual(command_parser.normalize("  Ho   M  AN "), "ho m an")
         self.assertIsNone(command_parser.normalize(None))
         self.assertIsNone(command_parser.normalize("  "))
+
+    def test_help_commands(self):
+        self.assertEqual(command_parser.parse_command("Hilfe"), "help")
+        self.assertEqual(command_parser.parse_command("hilfe"), "help")
+        self.assertEqual(command_parser.parse_command("?"), "help")
+        self.assertEqual(command_parser.parse_command("  Hilfe  "), "help")
+
+    def test_help_text(self):
+        text = command_parser.build_help_text()
+        self.assertIn("HO M an", text)
+        self.assertIn("Hilfe", text)
+        self.assertIn("?", text)
 
 
 class LogTests(unittest.TestCase):
@@ -585,6 +602,11 @@ class PerformActionTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertIsNone(result.detail)
 
+    def test_help_no_action(self):
+        result = ha_client.perform_action("help", {}, None, None, 5, True)
+        self.assertFalse(result.attempted)
+        self.assertEqual(result.detail, "keine Aktion")
+
 
 class CliTests(unittest.TestCase):
     def test_prune_now(self):
@@ -701,6 +723,12 @@ class SignalReplyTests(unittest.TestCase):
 
     def test_no_action(self):
         self.assertIsNone(signal_client.build_reply("on", None))
+
+    def test_help(self):
+        reply = signal_client.build_reply(
+            "help", {"attempted": False, "ok": None, "detail": "keine Aktion"}
+        )
+        self.assertIn("HO M an", reply or "")
 
 
 class SendMessageTests(unittest.TestCase):
@@ -847,6 +875,10 @@ class ConfigEdgeCaseTests(unittest.TestCase):
 
     def test_commands_not_bool(self):
         self.assert_config_error(config_data(commands={"on": "yes"}))
+
+    def test_commands_help_valid(self):
+        config = bridge.load_config(self.write(config_data(commands={"help": False})))
+        self.assertFalse(config.commands["help"])
 
     def test_actions_not_object(self):
         self.assert_config_error(config_data(home_assistant={"actions": []}))
@@ -1216,6 +1248,7 @@ class SendMessageErrorTests(unittest.TestCase):
         server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.shutdown)
+        time.sleep(0.05)
         return server.server_address[1]
 
     def send(self, port):

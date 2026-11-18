@@ -14,6 +14,7 @@ FIXED_COMMANDS = (
     {"id": "on", "text": "HO M an", "description": "Home Office einschalten"},
     {"id": "off", "text": "HO M aus", "description": "Home Office ausschalten"},
     {"id": "status", "text": "HO M Status", "description": "Status abfragen"},
+    {"id": "help", "text": "Hilfe / ?", "description": "Hilfe anzeigen"},
 )
 FIXED_COMMAND_IDS = frozenset(command["id"] for command in FIXED_COMMANDS)
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
