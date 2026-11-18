@@ -41,7 +41,7 @@ class SignalTests(unittest.TestCase):
         ):
             self.assertEqual(
                 status.check_signal("http://x")["detail"],
-                "Antwort ist kein gueltiges JSON",
+                "Antwort ist kein gültiges JSON",
             )
 
     def test_http_error(self):
@@ -62,7 +62,7 @@ class SignalTests(unittest.TestCase):
             status.urllib.request, "urlopen", side_effect=TimeoutError()
         ):
             self.assertEqual(
-                status.check_signal("http://x")["detail"], "Zeitueberschreitung"
+                status.check_signal("http://x")["detail"], "Zeitüberschreitung"
             )
 
     def test_oserror(self):
@@ -87,11 +87,34 @@ class HomeAssistantTests(unittest.TestCase):
         with mock.patch.object(
             status.urllib.request,
             "urlopen",
-            return_value=FakeResponse(b'{"state":"on"}'),
+            return_value=FakeResponse(b'{"message":"API running."}'),
         ):
             result = status.check_home_assistant("http://x", "t")
         self.assertTrue(result["ok"])
-        self.assertEqual(result["detail"], "on")
+        self.assertEqual(result["detail"], "erreichbar")
+
+    def test_uses_api_endpoint(self):
+        captured = {}
+
+        def fake_urlopen(request, timeout):
+            captured["url"] = request.full_url
+            captured["auth"] = request.get_header("Authorization")
+            return FakeResponse(b'{"message":"API running."}')
+
+        with mock.patch.object(status.urllib.request, "urlopen", fake_urlopen):
+            status.check_home_assistant("http://x/", "t")
+        self.assertEqual(captured["url"], "http://x/api/")
+        self.assertEqual(captured["auth"], "Bearer t")
+
+    def test_html_response(self):
+        html = b"<!DOCTYPE html><html><body>Home Assistant</body></html>"
+        with mock.patch.object(
+            status.urllib.request, "urlopen", return_value=FakeResponse(html)
+        ):
+            self.assertEqual(
+                status.check_home_assistant("http://x", "t")["detail"],
+                "Antwort ist kein gültiges JSON",
+            )
 
     def test_invalid_json(self):
         with mock.patch.object(
@@ -99,7 +122,7 @@ class HomeAssistantTests(unittest.TestCase):
         ):
             self.assertEqual(
                 status.check_home_assistant("http://x", "t")["detail"],
-                "Antwort ist kein gueltiges JSON",
+                "Antwort ist kein gültiges JSON",
             )
 
     def test_not_object(self):
@@ -111,12 +134,13 @@ class HomeAssistantTests(unittest.TestCase):
                 "Antwort ist kein Objekt",
             )
 
-    def test_missing_state(self):
+    def test_unexpected_message(self):
         with mock.patch.object(
             status.urllib.request, "urlopen", return_value=FakeResponse(b"{}")
         ):
             self.assertEqual(
-                status.check_home_assistant("http://x", "t")["detail"], "kein Zustand"
+                status.check_home_assistant("http://x", "t")["detail"],
+                "unerwartete Antwort",
             )
 
     def test_http_error(self):
@@ -143,13 +167,13 @@ class ServiceTests(unittest.TestCase):
     def test_oserror(self):
         runner = mock.Mock(side_effect=OSError("x"))
         self.assertIn(
-            "Pruefung fehlgeschlagen", status.check_service("unit", runner)["detail"]
+            "Prüfung fehlgeschlagen", status.check_service("unit", runner)["detail"]
         )
 
     def test_subprocess_error(self):
         runner = mock.Mock(side_effect=subprocess.SubprocessError("x"))
         self.assertIn(
-            "Pruefung fehlgeschlagen", status.check_service("unit", runner)["detail"]
+            "Prüfung fehlgeschlagen", status.check_service("unit", runner)["detail"]
         )
 
 

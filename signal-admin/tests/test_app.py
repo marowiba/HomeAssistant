@@ -234,6 +234,31 @@ class PageTests(AppTestBase):
         self.assertIn(b"HO M an", response.body)
         self.assertIn(b"Hilfe", response.body)
 
+    def test_commands_default_order(self):
+        body = self.get("/commands").body.decode("utf-8")
+        self.assertLess(body.index("HO M an"), body.index("HO M aus"))
+        self.assertLess(body.index("HO M aus"), body.index("HO M Status"))
+
+    def test_commands_sort_text_asc(self):
+        body = self.get("/commands?sort=text&dir=asc").body.decode("utf-8")
+        self.assertLess(body.index("HO M an"), body.index("HO M Status"))
+
+    def test_commands_sort_text_desc(self):
+        body = self.get("/commands?sort=text&dir=desc").body.decode("utf-8")
+        self.assertLess(body.index("HO M Status"), body.index("HO M an"))
+
+    def test_commands_sort_entity_asc(self):
+        body = self.get("/commands?sort=entity&dir=asc").body.decode("utf-8")
+        self.assertLess(body.index('value="Hilfe"'), body.index('value="HO M an"'))
+
+    def test_commands_sort_entity_desc(self):
+        body = self.get("/commands?sort=entity&dir=desc").body.decode("utf-8")
+        self.assertLess(body.index('value="HO M an"'), body.index('value="Hilfe"'))
+
+    def test_commands_invalid_sort_falls_back(self):
+        body = self.get("/commands?sort=foo&dir=bar").body.decode("utf-8")
+        self.assertLess(body.index("HO M an"), body.index("HO M aus"))
+
     def test_commands_not_list(self):
         data = base_config()
         data["commands"] = "x"
@@ -303,6 +328,41 @@ class PageTests(AppTestBase):
     def test_audit(self):
         self.assertEqual(self.get("/audit").status, 200)
 
+    def write_audit(self):
+        self.app.audit.append("aaa", "login", "session", now=1000)
+        self.app.audit.append("bbb", "allowlist.add", "Matthias", now=2000)
+        self.app.audit.append("ccc", "command.update", "on", now=3000)
+
+    def test_audit_default_order_newest_first(self):
+        self.write_audit()
+        body = self.get("/audit").body.decode("utf-8")
+        self.assertLess(body.index("ccc"), body.index("aaa"))
+
+    def test_audit_sort_actor_asc(self):
+        self.write_audit()
+        body = self.get("/audit?sort=actor&dir=asc").body.decode("utf-8")
+        self.assertLess(body.index("aaa"), body.index("ccc"))
+
+    def test_audit_sort_actor_desc(self):
+        self.write_audit()
+        body = self.get("/audit?sort=actor&dir=desc").body.decode("utf-8")
+        self.assertLess(body.index("ccc"), body.index("aaa"))
+
+    def test_audit_invalid_sort_falls_back(self):
+        self.write_audit()
+        body = self.get("/audit?sort=foo&dir=bar").body.decode("utf-8")
+        self.assertLess(body.index("ccc"), body.index("aaa"))
+
+    def test_audit_sort_hash(self):
+        self.write_audit()
+        self.assertEqual(self.get("/audit?sort=hash&dir=asc").status, 200)
+
+    def test_audit_action_label(self):
+        self.write_audit()
+        body = self.get("/audit").body.decode("utf-8")
+        self.assertIn("Allow-List-Eintrag angelegt", body)
+        self.assertIn("Kommando geändert", body)
+
     def test_status(self):
         self.assertEqual(self.get("/status").status, 200)
 
@@ -329,11 +389,16 @@ class PageTests(AppTestBase):
         response = self.get("/static/admin.css")
         self.assertEqual(response.status, 200)
         self.assertEqual(response.headers["Content-Type"], "text/css; charset=utf-8")
+        body = response.body.decode("utf-8")
+        self.assertIn("settings-grid", body)
+        self.assertIn("form-row", body)
+        self.assertIn("overflow-x: hidden", body)
 
     def test_static_js(self):
         response = self.get("/static/admin.js")
         self.assertEqual(response.status, 200)
         self.assertIn("data-select-all", response.body.decode("utf-8"))
+        self.assertIn("data-menu-toggle", response.body.decode("utf-8"))
         self.assertEqual(
             response.headers["Content-Type"], "application/javascript; charset=utf-8"
         )
@@ -676,6 +741,29 @@ class ClientKeyTests(AppTestBase):
 
     def test_default(self):
         self.assertEqual(AdminApp._client_key({}), "local")
+
+    def test_statuses_uses_config_base_url(self):
+        app = AdminApp(
+            self.config_path,
+            self.log_path,
+            self.db_path,
+            "secret",
+            now=lambda: 1000.0,
+        )
+        config = {"home_assistant": {"base_url": "http://ha:8123", "token": "tok"}}
+        with mock.patch.object(
+            app_module.status_mod, "check_signal", return_value={"ok": True, "detail": "x"}
+        ), mock.patch.object(
+            app_module.status_mod,
+            "check_home_assistant",
+            return_value={"ok": True, "detail": "y"},
+        ) as check_ha, mock.patch.object(
+            app_module.status_mod,
+            "check_service",
+            return_value={"ok": True, "detail": "z"},
+        ):
+            app._statuses(config)
+        check_ha.assert_called_once_with("http://ha:8123", "tok")
 
     def test_statuses_overrides(self):
         app = AdminApp(

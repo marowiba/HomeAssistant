@@ -215,7 +215,7 @@ class ValidateTests(unittest.TestCase):
         data = base_config()
         data["commands"][0]["action"] = "explode"
         self.assertIn(
-            "commands[0].action ist ungueltig", config_store.validate_config(data)
+            "commands[0].action ist ungültig", config_store.validate_config(data)
         )
 
     def test_command_enabled_not_bool(self):
@@ -237,14 +237,14 @@ class ValidateTests(unittest.TestCase):
         data = base_config()
         data["commands"][0]["entity_id"] = "Switch X"
         self.assertIn(
-            "commands[0].entity_id ist ungueltig", config_store.validate_config(data)
+            "commands[0].entity_id ist ungültig", config_store.validate_config(data)
         )
 
     def test_on_requires_switch(self):
         data = base_config()
         data["commands"][0]["entity_id"] = "light.x"
         self.assertIn(
-            "commands[0]: on/off nur fuer switch-Entitaeten",
+            "commands[0]: on/off nur für switch-Entitäten",
             config_store.validate_config(data),
         )
 
@@ -309,7 +309,7 @@ class ValidateTests(unittest.TestCase):
             }
         )
         self.assertIn(
-            "commands[5]: set_value nur fuer climate, number, input_number",
+            "commands[5]: set_value nur für climate, number, input_number",
             config_store.validate_config(data),
         )
 

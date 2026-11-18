@@ -16,7 +16,7 @@ def _http_error_detail(exc: Exception) -> str:
     if isinstance(exc, urllib.error.URLError):
         return f"Verbindung fehlgeschlagen: {exc.reason}"
     if isinstance(exc, TimeoutError):
-        return "Zeitueberschreitung"
+        return "Zeitüberschreitung"
     if isinstance(exc, OSError):
         return f"Netzwerkfehler: {exc.strerror or exc}"
     return "Unbekannter Fehler"
@@ -44,33 +44,36 @@ def check_signal(rpc_url: str, timeout: int = 5) -> dict[str, Any]:
     try:
         parsed = json.loads(body or "")
     except json.JSONDecodeError:
-        return {"ok": False, "detail": "Antwort ist kein gueltiges JSON"}
+        return {"ok": False, "detail": "Antwort ist kein gültiges JSON"}
     if isinstance(parsed, dict) and "error" in parsed:
         return {"ok": False, "detail": "JSON-RPC-Fehler"}
     return {"ok": True, "detail": "erreichbar"}
 
 
 def check_home_assistant(
-    status_url: str | None, token: str | None, timeout: int = 5
+    base_url: str | None, token: str | None, timeout: int = 5
 ) -> dict[str, Any]:
-    if not status_url or not token:
+    """Prüft die Home-Assistant-API über ``/api/``.
+
+    Die Startseite von Home Assistant liefert HTML. Der Endpunkt ``/api/``
+    antwortet mit JSON und prueft zugleich den Token.
+    """
+    if not base_url or not token:
         return {"ok": False, "detail": "nicht konfiguriert"}
-    request = urllib.request.Request(
-        status_url, headers={"Authorization": f"Bearer {token}"}
-    )
+    url = base_url.rstrip("/") + "/api/"
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
     body, error = _fetch(request, timeout)
     if error is not None:
         return {"ok": False, "detail": error}
     try:
         parsed = json.loads(body or "")
     except json.JSONDecodeError:
-        return {"ok": False, "detail": "Antwort ist kein gueltiges JSON"}
+        return {"ok": False, "detail": "Antwort ist kein gültiges JSON"}
     if not isinstance(parsed, dict):
         return {"ok": False, "detail": "Antwort ist kein Objekt"}
-    state = parsed.get("state")
-    if not isinstance(state, str) or not state:
-        return {"ok": False, "detail": "kein Zustand"}
-    return {"ok": True, "detail": state}
+    if parsed.get("message") != "API running.":
+        return {"ok": False, "detail": "unerwartete Antwort"}
+    return {"ok": True, "detail": "erreichbar"}
 
 
 def check_service(
@@ -85,7 +88,7 @@ def check_service(
             timeout=5,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        return {"ok": False, "detail": f"Pruefung fehlgeschlagen: {exc}"}
+        return {"ok": False, "detail": f"Prüfung fehlgeschlagen: {exc}"}
     state = (result.stdout or "").strip() or "unbekannt"
     return {"ok": state == "active", "detail": state}
 

@@ -19,7 +19,7 @@ VALUE_DOMAINS = ("climate", "number", "input_number")
 SWITCH_DOMAIN = "switch"
 ENTITY_RE = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 
-# Standard-Kommandos fuer die Migration alter Konfigurationen.
+# Standard-Kommandos für die Migration alter Konfigurationen.
 DEFAULT_COMMANDS = (
     ("on", "HO M an", "on"),
     ("off", "HO M aus", "off"),
@@ -33,7 +33,7 @@ _STATE_MARKER = "/api/states/"
 
 
 class ConfigError(Exception):
-    """Ungueltige oder unvollstaendige Konfiguration."""
+    """Ungültige oder unvollständige Konfiguration."""
 
 
 def _is_http_url(value: str) -> bool:
@@ -114,7 +114,7 @@ def load_config(path: str | Path) -> dict[str, Any]:
     except FileNotFoundError as exc:
         raise ConfigError(f"Konfiguration nicht gefunden: {path}") from exc
     except json.JSONDecodeError as exc:
-        raise ConfigError(f"Konfiguration ist kein gueltiges JSON: {exc}") from exc
+        raise ConfigError(f"Konfiguration ist kein gültiges JSON: {exc}") from exc
     if not isinstance(data, dict):
         raise ConfigError("Konfiguration muss ein JSON-Objekt sein")
     return migrate_config(data)
@@ -170,14 +170,14 @@ def _validate_command_entity(
     if not isinstance(entity_id, str):
         return errors
     if not ENTITY_RE.match(entity_id):
-        errors.append(f"commands[{index}].entity_id ist ungueltig")
+        errors.append(f"commands[{index}].entity_id ist ungültig")
         return errors
     domain = entity_id.split(".", 1)[0]
     if action in ("on", "off") and domain != SWITCH_DOMAIN:
-        errors.append(f"commands[{index}]: on/off nur fuer switch-Entitaeten")
+        errors.append(f"commands[{index}]: on/off nur für switch-Entitäten")
     if action == "set_value" and domain not in VALUE_DOMAINS:
         errors.append(
-            f"commands[{index}]: set_value nur fuer climate, number, input_number"
+            f"commands[{index}]: set_value nur für climate, number, input_number"
         )
     return errors
 
@@ -231,7 +231,7 @@ def _validate_command(item: Any, index: int) -> list[str]:
     errors = _validate_command_identity(item, index)
     action = item.get("action")
     if action not in ACTIONS:
-        errors.append(f"commands[{index}].action ist ungueltig")
+        errors.append(f"commands[{index}].action ist ungültig")
         return errors
     errors.extend(_validate_command_entity(item, index, action))
     errors.extend(_validate_command_text(item, index, action))
@@ -320,7 +320,7 @@ def _validate_retention(data: dict[str, Any]) -> list[str]:
 
 
 def validate_config(data: Any) -> list[str]:
-    """Prueft die verwalteten Felder und gibt eine Liste von Fehlern zurueck."""
+    """Prüft die verwalteten Felder und gibt eine Liste von Fehlern zurück."""
     if not isinstance(data, dict):
         return ["Konfiguration muss ein JSON-Objekt sein"]
     errors: list[str] = []
@@ -369,7 +369,7 @@ def restore_config(path: str | Path, raw: bytes) -> dict[str, Any]:
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConfigError(f"Backup ist kein gueltiges JSON: {exc}") from exc
+        raise ConfigError(f"Backup ist kein gültiges JSON: {exc}") from exc
     if not isinstance(data, dict):
         raise ConfigError("Backup muss ein JSON-Objekt sein")
     data = migrate_config(data)
@@ -418,7 +418,7 @@ def update_allowlist_entry(
     result = _copy(data)
     allowlist = result.get("allowlist", [])
     if not isinstance(allowlist, list) or index < 0 or index >= len(allowlist):
-        raise ConfigError("Allowlist-Eintrag nicht gefunden")
+        raise ConfigError("Allow-List-Eintrag nicht gefunden")
     entry: dict[str, Any] = {"label": label, "enabled": enabled}
     if number:
         entry["number"] = number
@@ -433,7 +433,7 @@ def delete_allowlist_entry(data: dict[str, Any], index: int) -> dict[str, Any]:
     result = _copy(data)
     allowlist = result.get("allowlist", [])
     if not isinstance(allowlist, list) or index < 0 or index >= len(allowlist):
-        raise ConfigError("Allowlist-Eintrag nicht gefunden")
+        raise ConfigError("Allow-List-Eintrag nicht gefunden")
     del allowlist[index]
     _ensure_valid(result)
     return result

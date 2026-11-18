@@ -1,6 +1,14 @@
 (function () {
   "use strict";
 
+  function setMenu(open) {
+    document.body.classList.toggle("menu-open", open);
+    var button = document.querySelector("[data-menu-toggle]");
+    if (button) {
+      button.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+  }
+
   function toggleAll(scope, checked) {
     var boxes = scope.querySelectorAll("[data-row-select]");
     for (const box of boxes) {
@@ -26,6 +34,17 @@
     }
     return form.dataset.confirm;
   }
+
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (target?.matches?.("[data-menu-toggle]")) {
+      setMenu(!document.body.classList.contains("menu-open"));
+      return;
+    }
+    if (target?.closest?.(".nav-item")) {
+      setMenu(false);
+    }
+  });
 
   document.addEventListener("change", function (event) {
     var target = event.target;

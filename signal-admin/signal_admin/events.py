@@ -1,5 +1,5 @@
 # pyright: basic
-"""HAD-0008: Ereignislog lesen, filtern und loeschen."""
+"""HAD-0008: Event Log lesen, filtern und löschen."""
 
 from __future__ import annotations
 

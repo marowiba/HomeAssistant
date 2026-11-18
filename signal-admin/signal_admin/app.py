@@ -23,6 +23,8 @@ from .store import Store
 
 SESSION_COOKIE = "signal_admin_session"
 PAGE_SIZE = 25
+COMMAND_SORT_KEYS = ("text", "entity")
+AUDIT_SORT_KEYS = ("id", "ts", "actor", "action", "target", "detail", "hash")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_TYPES = {
     ".css": "text/css; charset=utf-8",
@@ -81,6 +83,34 @@ def _float_field(form: dict[str, list[str]], key: str) -> float | None:
         return float(raw)
     except ValueError:
         return None
+
+
+def _sort_commands(
+    commands: list[dict[str, Any]], sort_key: str, direction: str
+) -> list[dict[str, Any]]:
+    if sort_key not in COMMAND_SORT_KEYS:
+        return commands
+    field = "text" if sort_key == "text" else "entity_id"
+    return sorted(
+        commands,
+        key=lambda item: str(item.get(field) or "").casefold(),
+        reverse=direction == "desc",
+    )
+
+
+def _sort_audit(
+    entries: list[dict[str, Any]], sort_key: str, direction: str
+) -> list[dict[str, Any]]:
+    key = sort_key if sort_key in AUDIT_SORT_KEYS else "ts"
+
+    def value(entry: dict[str, Any]) -> Any:
+        if key in ("id", "ts"):
+            return int(entry.get(key) or 0)
+        if key == "hash":
+            return str(entry.get("entry_hash") or "")
+        return str(entry.get(key) or "").casefold()
+
+    return sorted(entries, key=value, reverse=direction == "desc")
 
 
 class AdminApp:
@@ -182,7 +212,7 @@ class AdminApp:
             form = self._parse_form(headers, body)
             if not auth.verify_csrf(token, self.secret, self._first(form, "csrf")):
                 return _html(
-                    403, templates.error_page("Ungueltiges CSRF-Token", user, csrf)
+                    403, templates.error_page("Ungültiges CSRF-Token", user, csrf)
                 )
         return self._route(method, route, query, form, user, csrf, token)
 
@@ -216,13 +246,13 @@ class AdminApp:
         if route == ALLOWLIST_PATH:
             return self._allowlist(user, csrf)
         if route == COMMANDS_PATH:
-            return self._commands(user, csrf)
+            return self._commands(user, csrf, query=query)
         if route == "/events":
             return self._events(query, user, csrf)
         if route == "/events/detail":
             return self._event_detail(query, user, csrf)
         if route == "/audit":
-            return self._audit(user, csrf)
+            return self._audit(user, csrf, query=query)
         if route == "/status":
             return self._status(user, csrf)
         if route == "/settings":
@@ -275,7 +305,7 @@ class AdminApp:
             return _html(
                 429,
                 templates.login_page(
-                    "Zu viele Fehlversuche. Bitte spaeter erneut versuchen.", username
+                    "Zu viele Fehlversuche. Bitte später erneut versuchen.", username
                 ),
             )
         user = self.store.get_user(username)
@@ -321,7 +351,7 @@ class AdminApp:
         config = self._load_config()
         all_events = events_mod.read_events(self.log_path)
         stats = [
-            ("Allowlist-Eintraege", len(config.get("allowlist", []))),
+            ("Allow-List-Einträge", len(config.get("allowlist", []))),
             ("Ereignisse", len(all_events)),
             (
                 "Blockiert",
@@ -411,13 +441,25 @@ class AdminApp:
         csrf: str,
         flash: str | None = None,
         error: bool = False,
+        query: dict[str, list[str]] | None = None,
     ) -> Response:
         config = self._load_config()
         commands = config.get("commands", [])
         if not isinstance(commands, list):
             commands = []
+        query = query or {}
+        sort_key = self._first(query, "sort")
+        if sort_key not in COMMAND_SORT_KEYS:
+            sort_key = ""
+        direction = self._first(query, "dir", "asc")
+        if direction not in ("asc", "desc"):
+            direction = "asc"
+        commands = _sort_commands(commands, sort_key, direction)
         return _html(
-            200, templates.commands_page(commands, user, csrf, flash, error)
+            200,
+            templates.commands_page(
+                commands, user, csrf, flash, error, sort_key, direction
+            ),
         )
 
     def _command_form_args(self, form: dict[str, list[str]]) -> tuple[Any, ...]:
@@ -588,7 +630,7 @@ class AdminApp:
             ids = set(form.get("ids", []))
             target = ",".join(sorted(ids))
         if not ids:
-            return self._events({}, user, csrf, "Keine Ereignisse ausgewaehlt.", True)
+            return self._events({}, user, csrf, "Keine Ereignisse ausgewählt.", True)
         removed = events_mod.delete_events(self.log_path, ids)
         self.audit.append(
             user,
@@ -597,13 +639,29 @@ class AdminApp:
             f"{removed} entfernt",
             now=self._now_ts(),
         )
-        return self._events({}, user, csrf, f"{removed} Ereignis(se) geloescht.")
+        return self._events({}, user, csrf, f"{removed} Ereignis(se) gelöscht.")
 
     # --- Audit / Status / Einstellungen ---
-    def _audit(self, user: str, csrf: str) -> Response:
+    def _audit(
+        self,
+        user: str,
+        csrf: str,
+        query: dict[str, list[str]] | None = None,
+    ) -> Response:
+        query = query or {}
+        sort_key = self._first(query, "sort", "ts")
+        if sort_key not in AUDIT_SORT_KEYS:
+            sort_key = "ts"
+        direction = self._first(query, "dir", "desc")
+        if direction not in ("asc", "desc"):
+            direction = "desc"
         ok, bad_id = self.audit.verify()
+        entries = _sort_audit(self.audit.list(), sort_key, direction)
         return _html(
-            200, templates.audit_page(self.audit.list(), ok, bad_id, user, csrf)
+            200,
+            templates.audit_page(
+                entries, ok, bad_id, user, csrf, sort_key, direction
+            ),
         )
 
     def _status(self, user: str, csrf: str) -> Response:
@@ -683,7 +741,7 @@ class AdminApp:
 
 
 class _AdminServer(socketserver.ThreadingTCPServer):
-    """Threading-Server fuer die Weboberflaeche."""
+    """Threading-Server für die Weboberfläche."""
 
     allow_reuse_address = True
     daemon_threads = True

@@ -35,7 +35,7 @@ specs/
 | :--- | :--- | :--- |
 | Signal-Integration | `specs/signal-integration/` | `design.md`, `HAD-0001-empfangsdienst.md`, `HAD-0002-allowlist-und-chatlog.md`, `HAD-0003-kommandoerkennung.md`, `HAD-0004-home-assistant-anbindung.md`, `HAD-0005-antworten-und-fehlerverhalten.md`, `HAD-0006-abnahme.md`, `HAD-0009-registrierungspin.md`, `HAD-0015-hilfe-nachricht.md` |
 | Codequalität und SAST | `specs/codequalitaet-sast/` | `design.md`, `HAD-0007-sonarqube-sast.md` |
-| Signal-Administration | `specs/signal-administration/` | `design.md`, `HAD-0008-signal-administration.md`, `HAD-0010-eigene-kommandos.md`, `HAD-0020-ereignislog-sortierung.md` |
+| Signal-Administration | `specs/signal-administration/` | `design.md`, `HAD-0008-signal-administration.md`, `HAD-0010-eigene-kommandos.md`, `HAD-0020-ereignislog-sortierung.md`, `HAD-0021-absender-nummer.md`, `HAD-0022-umlaute.md`, `HAD-0023-responsive.md`, `HAD-0024-ha-status-pruefung.md`, `HAD-0025-einstellungen-schaltflaechen.md`, `HAD-0026-audit-log.md`, `HAD-0027-umbenennung.md`, `HAD-0028-kommandos-sortierung.md` |
 | Dashboards | `specs/dashboards/` | `analysis.md`, `proposal.md` |
 
 `specs/dashboards/` ist eine **bewusste Ausnahme** von der Regel „ein Ordner pro

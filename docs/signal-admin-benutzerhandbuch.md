@@ -16,18 +16,18 @@ erreichbar.
 - **Benutzername:** `admin`
 - **Passwort:** das beim Anlegen des Kontos gesetzte Passwort.
 
-Nach der Anmeldung steht die Seitenleiste mit Dashboard, Allowlist, Kommandos,
-Ereignislog, Audit-Log, Status und Einstellungen zur Verfügung. Abmelden über
+Nach der Anmeldung steht die Seitenleiste mit Dashboard, Allow List, Kommandos,
+Event Log, Audit Log, Status und Einstellungen zur Verfügung. Abmelden über
 den Knopf oben rechts.
 
 ## Dashboard
 
-- Kennzahlen: Allowlist-Einträge, Ereignisse, blockierte Nachrichten,
+- Kennzahlen: Allow-List-Einträge, Ereignisse, blockierte Nachrichten,
   Aufbewahrung in Tagen.
 - Verbindungen: `signal-bridge`, `signal-cli`, Home Assistant.
 - Letzte Ereignisse.
 
-## Allowlist
+## Allow List
 
 - **Neuen Eintrag anlegen:** Bezeichnung, Nummer (`+49...`) und/oder UUID,
   „aktiv“ setzen, „Hinzufügen“.
@@ -41,6 +41,9 @@ Nummer oder UUID.
 
 - Die Tabelle zeigt alle Kommandos mit Text, Aktion, Entität, Bereich und
   Status.
+- **Sortierung:** Die Spalten „Kommando“ und „Entität“ sortieren aufsteigend,
+  ein weiterer Klick absteigend. Ohne Sortierung gilt die
+  Konfigurationsreihenfolge.
 - **Neues Kommando anlegen:** Signal-Text, Aktion, Entität, optional `min`,
   `max` und Einheit, „Hinzufügen“.
 - **Bearbeiten:** Felder in der Zeile ändern, „Speichern“.
@@ -54,7 +57,7 @@ Nummer oder UUID.
 - Änderungen werden von der Bridge automatisch übernommen; ein Neustart ist
   nicht nötig.
 
-## Ereignislog
+## Event Log
 
 - **Suche** nach Text, Absender, Kommando.
 - **Filter:** Entscheidung (erlaubt/blockiert), Kommando, Zeitraum.
@@ -64,16 +67,22 @@ Nummer oder UUID.
 - **Sammelauswahl:** Die Checkbox im Spaltenkopf der ersten Spalte wählt alle
   gefilterten Ereignisse aus, auch auf anderen Seiten. „Ausgewählte löschen“
   löscht dann alle gefilterten Einträge, nicht nur die sichtbare Seite.
-- **Details** zeigt alle Felder eines Ereignisses.
+- **Details** zeigt alle Felder eines Ereignisses. Hat der Absender die
+  Nummernweitergabe abgeschaltet, steht unter „Absender-Nummer“ ein `-`; die
+  UUID erscheint dann unter „Absender-UUID“.
 - **Löschen:** Häkchen setzen, „Ausgewählte löschen“, bestätigen. Jede Löschung
-  wird im Audit-Log protokolliert.
+  wird im Audit Log protokolliert.
 
-## Audit-Log
+## Audit Log
 
-- Zeigt Anmeldungen, Allowlist-Änderungen, Kommando-Änderungen, Löschungen,
-  Retention und Restore.
+- Zeigt Anmeldungen, Allow-List-Änderungen, Kommando-Änderungen, Löschungen,
+  Retention und Restore. Aktionen erscheinen als verständliche Bezeichnung,
+  etwa „Allow-List-Eintrag angelegt“.
+- **Sortierung:** Alle Spalten sind sortierbar. Standard ist Zeit absteigend.
 - Die Hash-Kette zeigt, ob das Log unversehrt ist. „Kette gebrochen“ bedeutet
-  eine nachträgliche Manipulation.
+  eine nachträgliche Manipulation. Bei intakter Kette steht dort: „Die
+  Einträge sind unverändert; die Prüfkette ist vollständig.“
+- Die Legende unter der Tabelle erklärt Hash und Prüfkette.
 
 ## Status
 
@@ -82,10 +91,24 @@ Nummer oder UUID.
 
 ## Einstellungen
 
+Die Seite ist in zwei Bereiche gegliedert: „Aufbewahrung“ und „Sicherung“.
+Die Schaltflächen behalten ihre natürliche Breite und stehen direkt bei der
+zugehörigen Aktion.
+
 - **Aufbewahrung:** Anzahl Tage, „Speichern“.
 - **Bereinigung jetzt ausführen:** entfernt ältere Ereignisse sofort.
 - **Sicherung:** „Konfiguration herunterladen“ (JSON).
 - **Wiederherstellung:** Backup-JSON einfügen, „Wiederherstellen“.
+
+## Mobile Geräte
+
+- Unter 720 px Breite erscheint im Kopfbereich die Schaltfläche „Menü“. Sie
+  blendet die Seitenleiste ein und aus.
+- Kacheln und Panels bleiben innerhalb der Bildschirmbreite. Breite Tabellen
+  scrollen innerhalb ihrer Kachel, nicht die ganze Seite.
+- Formulare und Aktionszeilen stehen einspaltig; Eingabefelder nutzen die
+  Kachelbreite.
+- Die Schaltflächen sind für die Bedienung mit dem Finger ausreichend groß.
 
 ## Sicherheit
 

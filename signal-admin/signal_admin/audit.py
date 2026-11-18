@@ -1,5 +1,5 @@
 # pyright: basic
-"""HAD-0008: Manipulationsgeschuetztes Audit-Log mit Hash-Kette."""
+"""HAD-0008: Manipulationsgeschütztes Audit Log mit Hash-Kette."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def _entry_hash(prev_hash: str, canonical: str) -> str:
 
 
 class AuditLog:
-    """Schreibt Audit-Eintraege mit prev_hash/entry_hash fort und prueft die Kette."""
+    """Schreibt Audit-Einträge mit prev_hash/entry_hash fort und prüft die Kette."""
 
     def __init__(self, store: Store):
         self.store = store

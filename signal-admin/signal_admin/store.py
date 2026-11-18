@@ -1,5 +1,5 @@
 # pyright: basic
-"""HAD-0008: SQLite-Speicher fuer Benutzer, Sitzungen, Audit und Einstellungen."""
+"""HAD-0008: SQLite-Speicher für Benutzer, Sitzungen, Audit und Einstellungen."""
 
 from __future__ import annotations
 

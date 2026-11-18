@@ -3,16 +3,24 @@
 
 from __future__ import annotations
 
+import re
 from html import escape
 from typing import Any
 from urllib.parse import urlencode
 
+UUID_PATTERN = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+
+COMMANDS_URL = "/commands"
+AUDIT_URL = "/audit"
+
 NAV = (
     ("dashboard", "/dashboard", "Dashboard"),
-    ("allowlist", "/allowlist", "Allowlist"),
-    ("commands", "/commands", "Kommandos"),
-    ("events", "/events", "Ereignislog"),
-    ("audit", "/audit", "Audit-Log"),
+    ("allowlist", "/allowlist", "Allow List"),
+    ("commands", COMMANDS_URL, "Kommandos"),
+    ("events", "/events", "Event Log"),
+    ("audit", AUDIT_URL, "Audit Log"),
     ("status", "/status", "Status"),
     ("settings", "/settings", "Einstellungen"),
 )
@@ -20,6 +28,10 @@ NAV = (
 
 def _e(value: Any) -> str:
     return escape("" if value is None else str(value), quote=True)
+
+
+def _is_uuid(value: Any) -> bool:
+    return isinstance(value, str) and UUID_PATTERN.fullmatch(value.strip()) is not None
 
 
 def _badge(ok: bool, text_ok: str, text_bad: str) -> str:
@@ -100,8 +112,10 @@ def layout(
         '<header class="topbar">'
         '<a class="brand" href="/dashboard"><span class="brand-mark">SA</span>'
         " Signal-Administration</a>"
+        '<button class="menu-toggle" type="button" data-menu-toggle '
+        'aria-controls="sidebar" aria-expanded="false">Menü</button>'
         f"{user_html}</header>\n"
-        '<div class="shell"><aside class="sidebar"><nav>'
+        '<div class="shell"><aside class="sidebar" id="sidebar" data-sidebar><nav>'
         f"{nav_items}</nav></aside>\n"
         f'<main class="content"><h1>{_e(title)}</h1>{_flash(flash, error)}{content}</main></div>\n'
         '<footer class="footer">Signal-Administration · srv001 · lokales Netzwerk</footer>\n'
@@ -120,7 +134,7 @@ def login_page(error: str | None = None, username: str = "") -> str:
         '<body class="login-body">\n'
         '<form class="login-card" method="post" action="/login">\n'
         "<h1>Signal-Administration</h1>\n"
-        '<p class="muted">Anmeldung fuer Administratoren</p>\n'
+        '<p class="muted">Anmeldung für Administratoren</p>\n'
         f"{_flash(error, True)}\n"
         f'<label>Benutzername<input name="username" value="{_e(username)}" '
         'autocomplete="username" required></label>\n'
@@ -194,13 +208,13 @@ def allowlist_page(
             f'{" checked" if enabled else ""}> aktiv</label>'
             '<button class="btn" type="submit">Speichern</button></form>'
             '<form method="post" action="/allowlist/delete" class="inline-form" '
-            'data-confirm="Eintrag wirklich loeschen?">'
+            'data-confirm="Eintrag wirklich löschen?">'
             f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
             f'<input type="hidden" name="index" value="{index}">'
             '<button class="btn btn-danger" type="submit">Löschen</button></form>'
             "</td></tr>"
         )
-    body = "".join(rows) or '<tr><td colspan="5" class="muted">Keine Eintraege.</td></tr>'
+    body = "".join(rows) or '<tr><td colspan="5" class="muted">Keine Einträge.</td></tr>'
     content = (
         '<section class="panel"><h2>Neuen Eintrag anlegen</h2>'
         '<form class="grid-form" method="post" action="/allowlist/add">'
@@ -210,12 +224,12 @@ def allowlist_page(
         '<label>UUID<input name="uuid" placeholder="UUID"></label>'
         '<label class="inline"><input type="checkbox" name="enabled" value="1" checked>'
         " aktiv</label>"
-        '<button class="btn btn-primary" type="submit">Hinzufuegen</button></form></section>'
-        '<section class="panel"><h2>Allowlist</h2><table><thead><tr>'
+        '<button class="btn btn-primary" type="submit">Hinzufügen</button></form></section>'
+        '<section class="panel"><h2>Allow List</h2><table><thead><tr>'
         "<th>Bezeichnung</th><th>Nummer</th><th>UUID</th><th>Status</th><th>Aktionen</th>"
         f"</tr></thead><tbody>{body}</tbody></table></section>"
     )
-    return layout("Allowlist", "allowlist", content, user, csrf, flash, error)
+    return layout("Allow List", "allowlist", content, user, csrf, flash, error)
 
 
 def commands_page(
@@ -224,6 +238,8 @@ def commands_page(
     csrf: str,
     flash: str | None = None,
     error: bool = False,
+    sort_key: str = "",
+    direction: str = "asc",
 ) -> str:
     rows = []
     for command in commands:
@@ -249,34 +265,39 @@ def commands_page(
             f'{" checked" if enabled else ""}> aktiv</label>'
             '<button class="btn" type="submit">Speichern</button></form>'
             '<form method="post" action="/commands/delete" class="inline-form" '
-            'data-confirm="Kommando wirklich loeschen?">'
+            'data-confirm="Kommando wirklich löschen?">'
             f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
             f'<input type="hidden" name="command" value="{_e(command_id)}">'
             '<button class="btn btn-danger" type="submit">Löschen</button></form>'
             "</td>"
+            f'<td class="mono">{_e(command.get("entity_id") or "-")}</td>'
             f'<td>{_badge(enabled, "aktiv", "deaktiviert")}</td>'
             f"<td>{_e(_range_text(command))}</td>"
             "</tr>"
         )
-    body = "".join(rows) or '<tr><td colspan="3" class="muted">Keine Kommandos.</td></tr>'
+    body = "".join(rows) or '<tr><td colspan="4" class="muted">Keine Kommandos.</td></tr>'
+    headers = (
+        _sort_link("text", "Kommando", sort_key, direction, {}, COMMANDS_URL)
+        + _sort_link("entity", "Entität", sort_key, direction, {}, COMMANDS_URL)
+        + "<th>Status</th><th>Bereich</th>"
+    )
     content = (
         '<section class="panel"><h2>Neues Kommando anlegen</h2>'
         '<form class="grid-form" method="post" action="/commands/add">'
         f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
         '<label>Signal-Text<input name="text" placeholder="HO T {wert}" required></label>'
         f'<label>Aktion<select name="action">{_action_options("on")}</select></label>'
-        '<label>Entitaet<input name="entity_id" placeholder="climate.wohnzimmer"></label>'
+        '<label>Entität<input name="entity_id" placeholder="climate.wohnzimmer"></label>'
         '<label>Min<input name="min" placeholder="5"></label>'
         '<label>Max<input name="max" placeholder="30"></label>'
         '<label>Einheit<input name="unit" placeholder="°C"></label>'
         '<label class="inline"><input type="checkbox" name="enabled" value="1" checked>'
         " aktiv</label>"
-        '<button class="btn btn-primary" type="submit">Hinzufuegen</button></form>'
+        '<button class="btn btn-primary" type="submit">Hinzufügen</button></form>'
         '<p class="muted">Werte-Kommandos brauchen den Platzhalter <code>{wert}</code> '
         "am Ende. Erlaubt sind climate, number und input_number.</p></section>"
         '<section class="panel"><h2>Kommandos</h2><table><thead><tr>'
-        "<th>Kommando</th><th>Status</th><th>Bereich</th>"
-        f"</tr></thead><tbody>{body}</tbody></table></section>"
+        f"{headers}</tr></thead><tbody>{body}</tbody></table></section>"
     )
     return layout("Kommandos", "commands", content, user, csrf, flash, error)
 
@@ -287,6 +308,7 @@ def _sort_link(
     sort_key: str,
     direction: str,
     filters: dict[str, str],
+    base: str = "/events",
 ) -> str:
     active = key == sort_key
     if active:
@@ -304,7 +326,7 @@ def _sort_link(
     params["sort"] = key
     params["dir"] = next_dir
     return (
-        f'<th><a class="sort-link" href="/events?{urlencode(params)}">'
+        f'<th><a class="sort-link" href="{base}?{urlencode(params)}">'
         f"{_e(label)}{indicator}</a></th>"
     )
 
@@ -354,7 +376,7 @@ def events_page(
         )
     )
     prev_link = (
-        f'<a class="btn btn-ghost" href="/events?{_query(filters, page - 1)}">Zurueck</a>'
+        f'<a class="btn btn-ghost" href="/events?{_query(filters, page - 1)}">Zurück</a>'
         if page > 1
         else ""
     )
@@ -365,7 +387,7 @@ def events_page(
     )
     headers = (
         '<th><input type="checkbox" data-select-all '
-        'aria-label="Alle gefilterten Ereignisse auswaehlen"></th>'
+        'aria-label="Alle gefilterten Ereignisse auswählen"></th>'
         + _sort_link("ts", "Zeit", sort_key, direction, filters)
         + _sort_link("sender", "Absender", sort_key, direction, filters)
         + _sort_link("text", "Text", sort_key, direction, filters)
@@ -386,8 +408,8 @@ def events_page(
         '<button class="btn btn-primary" type="submit">Anwenden</button></form></section>'
         f'<section class="panel"><h2>Ereignisse ({total})</h2>'
         '<form id="delete-form" method="post" action="/events/delete" '
-        'data-confirm="Ausgewaehlte Ereignisse wirklich loeschen?" '
-        'data-confirm-all="Alle gefilterten Ereignisse wirklich loeschen?">'
+        'data-confirm="Ausgewählte Ereignisse wirklich löschen?" '
+        'data-confirm-all="Alle gefilterten Ereignisse wirklich löschen?">'
         f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
         '<input type="hidden" name="select_all" value="0" data-select-all-field>'
         f'<input type="hidden" name="q" value="{_e(filters.get("q", ""))}">'
@@ -395,15 +417,15 @@ def events_page(
         f'<input type="hidden" name="command" value="{_e(filters.get("command", ""))}">'
         f'<input type="hidden" name="from" value="{_e(filters.get("from", ""))}">'
         f'<input type="hidden" name="to" value="{_e(filters.get("to", ""))}">'
-        '<button class="btn btn-danger" type="submit">Ausgewaehlte loeschen</button></form>'
+        '<button class="btn btn-danger" type="submit">Ausgewählte löschen</button></form>'
         f'<table data-select-scope><thead><tr>{headers}</tr></thead>'
         f"<tbody>{body}</tbody></table>"
-        '<p class="muted">Die Kopf-Checkbox waehlt alle gefilterten Ereignisse aus, '
+        '<p class="muted">Die Kopf-Checkbox wählt alle gefilterten Ereignisse aus, '
         "auch auf anderen Seiten.</p>"
         f'<div class="pager">{prev_link}<span>Seite {page} von {total_pages}</span>'
         f"{next_link}</div></section>"
     )
-    return layout("Ereignislog", "events", content, user, csrf, flash, error)
+    return layout("Event Log", "events", content, user, csrf, flash, error)
 
 
 def _query(filters: dict[str, str], page: int) -> str:
@@ -419,13 +441,18 @@ def event_detail_page(
     flash: str | None = None,
     error: bool = False,
 ) -> str:
+    number = event.get("sender_number")
+    uuid = event.get("sender_uuid")
+    if _is_uuid(number):
+        uuid = uuid or number
+        number = None
     fields = (
         ("Zeit", event.get("ts")),
         ("Absender-Name", event.get("sender_name")),
-        ("Absender-Nummer", event.get("sender_number")),
-        ("Absender-UUID", event.get("sender_uuid")),
+        ("Absender-Nummer", number or "-"),
+        ("Absender-UUID", uuid),
         ("Text", event.get("text")),
-        ("Anhaenge", event.get("attachments")),
+        ("Anhänge", event.get("attachments")),
         ("Entscheidung", event.get("decision")),
         ("Grund", event.get("reason")),
         ("Treffer", event.get("matched_label")),
@@ -440,13 +467,34 @@ def event_detail_page(
         '<section class="panel"><h2>Ereignis</h2>'
         f"<table class=\"detail\"><tbody>{rows}</tbody></table>"
         '<form method="post" action="/events/delete" '
-        'data-confirm="Ereignis wirklich loeschen?">'
+        'data-confirm="Ereignis wirklich löschen?">'
         f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
         f'<input type="hidden" name="ids" value="{_e(event.get("_id"))}">'
-        '<button class="btn btn-danger" type="submit">Ereignis loeschen</button></form>'
-        '<p><a class="btn btn-ghost" href="/events">Zurueck zum Log</a></p></section>'
+        '<button class="btn btn-danger" type="submit">Ereignis löschen</button></form>'
+        '<p><a class="btn btn-ghost" href="/events">Zurück zum Log</a></p></section>'
     )
-    return layout("Ereignis-Detail", "events", content, user, csrf, flash, error)
+    return layout("Event-Detail", "events", content, user, csrf, flash, error)
+
+
+AUDIT_ACTION_LABELS = {
+    "login": "Anmeldung",
+    "allowlist.add": "Allow-List-Eintrag angelegt",
+    "allowlist.update": "Allow-List-Eintrag geändert",
+    "allowlist.delete": "Allow-List-Eintrag gelöscht",
+    "command.add": "Kommando angelegt",
+    "command.update": "Kommando geändert",
+    "command.delete": "Kommando gelöscht",
+    "command.toggle": "Kommando umgeschaltet",
+    "events.delete": "Ereignisse gelöscht",
+    "settings.retention": "Aufbewahrung geändert",
+    "settings.cleanup": "Bereinigung ausgeführt",
+    "settings.restore": "Konfiguration wiederhergestellt",
+}
+
+
+def _audit_action(action: Any) -> str:
+    text = "" if action is None else str(action)
+    return AUDIT_ACTION_LABELS.get(text, text)
 
 
 def audit_page(
@@ -455,25 +503,42 @@ def audit_page(
     bad_id: int | None,
     user: str,
     csrf: str,
+    sort_key: str = "ts",
+    direction: str = "desc",
 ) -> str:
     rows = "".join(
         f"<tr><td>{_e(entry.get('id'))}</td><td>{_e(entry.get('ts'))}</td>"
-        f"<td>{_e(entry.get('actor'))}</td><td>{_e(entry.get('action'))}</td>"
+        f"<td>{_e(entry.get('actor'))}</td>"
+        f"<td>{_e(_audit_action(entry.get('action')))}</td>"
         f"<td>{_e(entry.get('target'))}</td><td>{_e(entry.get('detail'))}</td>"
         f'<td class="mono">{_e(str(entry.get("entry_hash"))[:12])}</td></tr>'
         for entry in entries
-    ) or '<tr><td colspan="7" class="muted">Noch keine Eintraege.</td></tr>'
+    ) or '<tr><td colspan="7" class="muted">Noch keine Einträge.</td></tr>'
     if chain_ok:
         chain = _badge(True, "Kette unversehrt", "")
+        chain_text = "Die Einträge sind unverändert; die Prüfkette ist vollständig."
     else:
         chain = _badge(False, "", f"Kette gebrochen ab Eintrag {bad_id}")
-    content = (
-        f'<section class="panel"><h2>Integritaet</h2><p>{chain}</p></section>'
-        '<section class="panel"><h2>Audit-Log</h2><table class="audit"><thead><tr>'
-        "<th>ID</th><th>Zeit</th><th>Akteur</th><th>Aktion</th><th>Ziel</th>"
-        f"<th>Detail</th><th>Hash</th></tr></thead><tbody>{rows}</tbody></table></section>"
+        chain_text = "Mindestens ein Eintrag wurde nachträglich verändert."
+    headers = (
+        _sort_link("id", "ID", sort_key, direction, {}, AUDIT_URL)
+        + _sort_link("ts", "Zeit", sort_key, direction, {}, AUDIT_URL)
+        + _sort_link("actor", "Akteur", sort_key, direction, {}, AUDIT_URL)
+        + _sort_link("action", "Aktion", sort_key, direction, {}, AUDIT_URL)
+        + _sort_link("target", "Ziel", sort_key, direction, {}, AUDIT_URL)
+        + _sort_link("detail", "Detail", sort_key, direction, {}, AUDIT_URL)
+        + _sort_link("hash", "Hash", sort_key, direction, {}, AUDIT_URL)
     )
-    return layout("Audit-Log", "audit", content, user, csrf)
+    content = (
+        f'<section class="panel"><h2>Integrität</h2><p>{chain}</p>'
+        f'<p class="muted">{_e(chain_text)}</p></section>'
+        '<section class="panel"><h2>Audit Log</h2><table class="audit"><thead><tr>'
+        f"{headers}</tr></thead><tbody>{rows}</tbody></table>"
+        '<p class="muted">Der Hash ist der Prüfwert eines Eintrags. Jeder Eintrag '
+        "enthält den Hash des vorherigen; die Prüfkette verbindet alle Einträge.</p>"
+        "</section>"
+    )
+    return layout("Audit Log", "audit", content, user, csrf)
 
 
 def status_page(
@@ -514,21 +579,32 @@ def settings_page(
 ) -> str:
     retention = config.get("retention_days", 30)
     content = (
+        '<div class="settings-grid">'
         '<section class="panel"><h2>Aufbewahrung</h2>'
-        '<form class="grid-form" method="post" action="/settings/retention">'
+        '<p class="muted">Ereignisse werden nach dieser Frist automatisch entfernt.</p>'
+        '<form method="post" action="/settings/retention" class="form-row">'
         f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
         f'<label>Tage<input type="number" name="days" min="1" value="{_e(retention)}" required>'
         "</label>"
         '<button class="btn btn-primary" type="submit">Speichern</button></form>'
-        '<form method="post" action="/settings/cleanup" class="inline-form">'
+        '<div class="panel-divider"></div>'
+        '<form method="post" action="/settings/cleanup" class="form-row form-row-between">'
         f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
-        '<button class="btn" type="submit">Bereinigung jetzt ausfuehren</button></form></section>'
+        '<p class="muted form-hint">Entfernt ältere Ereignisse sofort.</p>'
+        '<button class="btn" type="submit">Bereinigung jetzt ausführen</button></form>'
+        "</section>"
         '<section class="panel"><h2>Sicherung</h2>'
-        '<p><a class="btn" href="/backup">Konfiguration herunterladen</a></p>'
-        '<form class="grid-form" method="post" action="/restore">'
+        '<p class="muted">Sichert die Konfiguration als JSON-Datei.</p>'
+        '<div class="form-row form-row-between">'
+        '<p class="muted form-hint">Allowlist, Kommandos und Einstellungen.</p>'
+        '<a class="btn" href="/backup">Konfiguration herunterladen</a></div>'
+        '<div class="panel-divider"></div>'
+        '<form method="post" action="/restore">'
         f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
-        '<label>Backup-JSON<textarea name="backup" rows="8" required></textarea></label>'
-        '<button class="btn btn-danger" type="submit">Wiederherstellen</button></form></section>'
+        '<label>Backup-JSON<textarea name="backup" rows="6" required></textarea></label>'
+        '<div class="form-row form-row-end">'
+        '<button class="btn btn-danger" type="submit">Wiederherstellen</button>'
+        "</div></form></section></div>"
     )
     return layout("Einstellungen", "settings", content, user, csrf, flash, error)
 
