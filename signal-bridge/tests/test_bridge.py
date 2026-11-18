@@ -1824,6 +1824,9 @@ class SendMessageErrorTests(unittest.TestCase):
     def test_http_error(self):
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                if length:
+                    self.rfile.read(length)
                 self.send_response(500)
                 self.end_headers()
 

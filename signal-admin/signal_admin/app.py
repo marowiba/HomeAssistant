@@ -502,12 +502,20 @@ class AdminApp:
         flash: str | None = None,
         error: bool = False,
     ) -> Response:
+        sort_key = self._first(query, "sort", events_mod.DEFAULT_SORT)
+        if sort_key not in events_mod.SORT_KEYS:
+            sort_key = events_mod.DEFAULT_SORT
+        direction = self._first(query, "dir", events_mod.DEFAULT_DIRECTION)
+        if direction not in events_mod.SORT_DIRECTIONS:
+            direction = events_mod.DEFAULT_DIRECTION
         filters = {
             "q": self._first(query, "q"),
             "decision": self._first(query, "decision"),
             "command": self._first(query, "command"),
             "from": self._first(query, "from"),
             "to": self._first(query, "to"),
+            "sort": sort_key,
+            "dir": direction,
         }
         try:
             page = max(1, int(self._first(query, "page", "1")))
@@ -526,17 +534,20 @@ class AdminApp:
             date_from=filters["from"],
             date_to=filters["to"],
         )
-        total = len(filtered)
+        ordered = events_mod.sort_events(filtered, sort_key, direction)
+        total = len(ordered)
         total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
         page = min(page, total_pages)
         start = (page - 1) * PAGE_SIZE
-        page_events = filtered[start : start + PAGE_SIZE]
+        page_events = ordered[start : start + PAGE_SIZE]
         return _html(
             200,
             templates.events_page(
                 page_events,
                 filters,
                 commands,
+                sort_key,
+                direction,
                 user,
                 csrf,
                 page,
@@ -556,17 +567,33 @@ class AdminApp:
                 return _html(200, templates.event_detail_page(event, user, csrf))
         return _html(404, templates.error_page("Ereignis nicht gefunden", user, csrf))
 
+    def _filtered_ids(self, form: dict[str, list[str]]) -> set[str]:
+        filtered = events_mod.filter_events(
+            events_mod.read_events(self.log_path),
+            query=self._first(form, "q"),
+            decision=self._first(form, "decision"),
+            command=self._first(form, "command"),
+            date_from=self._first(form, "from"),
+            date_to=self._first(form, "to"),
+        )
+        return {str(event.get("_id")) for event in filtered}
+
     def _events_delete(
         self, form: dict[str, list[str]], user: str, csrf: str
     ) -> Response:
-        ids = set(form.get("ids", []))
+        if self._first(form, "select_all") == "1":
+            ids = self._filtered_ids(form)
+            target = "alle gefilterten"
+        else:
+            ids = set(form.get("ids", []))
+            target = ",".join(sorted(ids))
         if not ids:
             return self._events({}, user, csrf, "Keine Ereignisse ausgewaehlt.", True)
         removed = events_mod.delete_events(self.log_path, ids)
         self.audit.append(
             user,
             "events.delete",
-            ",".join(sorted(ids)),
+            target,
             f"{removed} entfernt",
             now=self._now_ts(),
         )

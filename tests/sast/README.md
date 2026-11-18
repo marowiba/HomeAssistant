@@ -66,6 +66,7 @@ der letzte Lauf liegen.
 | :--- | :--- |
 | `sonar.sources` | `signal-bridge`, `signal-admin` |
 | `sonar.tests` | `signal-bridge/tests`, `signal-admin/tests` |
+| `sonar.coverage.exclusions` | `signal-admin/signal_admin/static/**` (kein JS-Testrunner) |
 | `sonar.python.coverage.reportPaths` | `coverage.xml` |
 | `sonar.python.version` | `3.14` |
 

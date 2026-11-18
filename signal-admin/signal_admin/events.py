@@ -90,6 +90,45 @@ def filter_events(
     ]
 
 
+SORT_KEYS = ("ts", "sender", "text", "decision", "command")
+SORT_DIRECTIONS = ("asc", "desc")
+DEFAULT_SORT = "ts"
+DEFAULT_DIRECTION = "desc"
+
+
+def _sort_value(event: dict[str, Any], key: str) -> str:
+    if key == "ts":
+        received = event.get("received_ms")
+        if isinstance(received, int) and not isinstance(received, bool):
+            return f"{received:020d}"
+        return str(event.get("ts", ""))
+    if key == "sender":
+        return str(
+            event.get("sender_name") or event.get("sender_number") or ""
+        ).casefold()
+    return str(event.get(key) or "").casefold()
+
+
+def sort_events(
+    events: list[dict[str, Any]],
+    sort_key: str = DEFAULT_SORT,
+    direction: str = DEFAULT_DIRECTION,
+) -> list[dict[str, Any]]:
+    """Sortiert Ereignisse stabil nach einem erlaubten Schluessel.
+
+    Unbekannte Schluessel und Richtungen fallen auf den Standard zurueck.
+    """
+    if sort_key not in SORT_KEYS:
+        sort_key = DEFAULT_SORT
+    if direction not in SORT_DIRECTIONS:
+        direction = DEFAULT_DIRECTION
+    return sorted(
+        events,
+        key=lambda event: (_sort_value(event, sort_key), str(event.get("_id", ""))),
+        reverse=direction == "desc",
+    )
+
+
 def _atomic_write_lines(path: Path, lines: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(

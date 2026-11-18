@@ -58,6 +58,12 @@ Nummer oder UUID.
 
 - **Suche** nach Text, Absender, Kommando.
 - **Filter:** Entscheidung (erlaubt/blockiert), Kommando, Zeitraum.
+- **Sortierung:** Klick auf einen Spaltenkopf sortiert aufsteigend, ein
+  weiterer Klick absteigend. Standard ist Zeit absteigend, also der jüngste
+  Eintrag oben. Der aktive Spaltenkopf zeigt die Richtung mit ▲ oder ▼.
+- **Sammelauswahl:** Die Checkbox im Spaltenkopf der ersten Spalte wählt alle
+  gefilterten Ereignisse aus, auch auf anderen Seiten. „Ausgewählte löschen“
+  löscht dann alle gefilterten Einträge, nicht nur die sichtbare Seite.
 - **Details** zeigt alle Felder eines Ereignisses.
 - **Löschen:** Häkchen setzen, „Ausgewählte löschen“, bestätigen. Jede Löschung
   wird im Audit-Log protokolliert.

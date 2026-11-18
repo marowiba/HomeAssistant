@@ -13,6 +13,7 @@ class TemplateTests(unittest.TestCase):
         html = templates.layout("Titel", "dashboard", "<p>x</p>", "admin", "csrf", "flash")
         self.assertIn("Abmelden", html)
         self.assertIn("flash", html)
+        self.assertIn("/static/admin.js", html)
 
     def test_layout_without_user(self):
         html = templates.layout("Titel", "dashboard", "<p>x</p>")
@@ -112,8 +113,18 @@ class TemplateTests(unittest.TestCase):
                     "command": "on",
                 }
             ],
-            {"q": "x", "decision": "allowed", "command": "on", "from": "", "to": ""},
+            {
+                "q": "x",
+                "decision": "allowed",
+                "command": "on",
+                "from": "",
+                "to": "",
+                "sort": "ts",
+                "dir": "desc",
+            },
             [{"id": "on", "text": "HO M an"}],
+            "ts",
+            "desc",
             "admin",
             "csrf",
             1,
@@ -122,10 +133,33 @@ class TemplateTests(unittest.TestCase):
         )
         self.assertIn("Ereignislog", html)
         self.assertIn("Weiter", html)
+        self.assertIn("data-select-all", html)
+        self.assertIn("data-row-select", html)
+        self.assertIn("data-select-scope", html)
+        self.assertIn("data-select-all-field", html)
+        self.assertIn("data-confirm-all", html)
+        self.assertIn("sort=sender", html)
+        self.assertIn("\u25bc", html)
 
     def test_events_empty(self):
-        html = templates.events_page([], {}, [], "admin", "csrf", 1, 1, 0)
+        html = templates.events_page([], {}, [], "ts", "desc", "admin", "csrf", 1, 1, 0)
         self.assertIn("Keine Ereignisse", html)
+
+    def test_events_sort_asc_indicator(self):
+        html = templates.events_page(
+            [],
+            {"sort": "text", "dir": "asc"},
+            [],
+            "text",
+            "asc",
+            "admin",
+            "csrf",
+            1,
+            1,
+            0,
+        )
+        self.assertIn("\u25b2", html)
+        self.assertIn("sort=text", html)
 
     def test_event_detail(self):
         html = templates.event_detail_page({"_id": "abc", "ts": "t"}, "admin", "csrf")

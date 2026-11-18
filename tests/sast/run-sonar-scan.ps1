@@ -122,6 +122,9 @@ $sonarArgs = @(
     # Tests liegen unterhalb von sonar.sources. Ohne diesen Ausschluss
     # indexiert der Scanner dieselbe Datei zweimal (Haupt- und Testdatei).
     "-Dsonar.exclusions=signal-bridge/tests/**,signal-admin/tests/**",
+    # Statische Assets werden analysiert, aber nicht in die Coverage gerechnet:
+    # das Projekt hat keinen JS-Testrunner, die Python-Coverage deckt sie nicht ab.
+    "-Dsonar.coverage.exclusions=signal-admin/signal_admin/static/**",
     "-Dsonar.python.coverage.reportPaths=coverage.xml",
     "-Dsonar.python.version=3.14",
     "-Dsonar.sourceEncoding=UTF-8"

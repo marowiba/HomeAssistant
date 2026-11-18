@@ -14,7 +14,6 @@ werden nach `backlog_done.md` verschoben und chronologisch absteigend (neuste ob
 
 | ID | Feature | Prio | Name | Beschreibung | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| HAD-0020 | Signal-Administration | Low | Ereignislog: Sammelauswahl über eine Checkbox in der Kopfzeile | In der Ereignisliste unter `/events` erhält die erste Spalte in der Kopfzeile eine Checkbox. Ein Klick aktiviert alle Zeilen-Checkboxen der aktuellen Seite, ein weiterer Klick deaktiviert sie. Die Kopfzeilen-Checkbox ist reines Bedienelement und darf nicht mit dem Löschformular übertragen werden. Umsetzung ohne Inline-JavaScript, weil die CSP `script-src 'self'` Inline-Handler blockiert: eine statische Datei `signal_admin/static/admin.js` einbinden, die über die Attribute `data-select-all` und `data-row-select` arbeitet. Die Auswahl gilt nur für die sichtbaren Zeilen der aktuellen Seite. Tests für die gerenderten Attribute und für die statische Datei ergänzen. | OPEN |
 
 ## 🔴 ON HOLD
 

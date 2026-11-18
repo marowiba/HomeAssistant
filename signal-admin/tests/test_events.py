@@ -116,3 +116,73 @@ class EventTests(unittest.TestCase):
         ), mock.patch.object(events.os, "unlink", side_effect=OSError("y")):
             with self.assertRaises(OSError):
                 events.delete_events(path, {"nope"})
+
+
+class SortTests(unittest.TestCase):
+    def events(self):
+        return [
+            record(
+                received_ms=1000,
+                ts="2026-11-16T09:00:00+00:00",
+                sender_name="Zoe",
+                text="b",
+                decision="blocked",
+                command=None,
+            ),
+            record(
+                received_ms=3000,
+                ts="2026-11-16T09:02:00+00:00",
+                sender_name="Anna",
+                text="c",
+                decision="allowed",
+                command="on",
+            ),
+            record(
+                received_ms=2000,
+                ts="2026-11-16T09:01:00+00:00",
+                sender_name="Mia",
+                text="a",
+                decision="allowed",
+                command="off",
+            ),
+        ]
+
+    def test_default_is_newest_first(self):
+        ordered = events.sort_events(self.events())
+        self.assertEqual([item["received_ms"] for item in ordered], [3000, 2000, 1000])
+
+    def test_ascending(self):
+        ordered = events.sort_events(self.events(), "ts", "asc")
+        self.assertEqual([item["received_ms"] for item in ordered], [1000, 2000, 3000])
+
+    def test_sort_by_sender(self):
+        ordered = events.sort_events(self.events(), "sender", "asc")
+        self.assertEqual(
+            [item["sender_name"] for item in ordered], ["Anna", "Mia", "Zoe"]
+        )
+
+    def test_sort_by_text(self):
+        ordered = events.sort_events(self.events(), "text", "asc")
+        self.assertEqual([item["text"] for item in ordered], ["a", "b", "c"])
+
+    def test_sort_by_decision(self):
+        ordered = events.sort_events(self.events(), "decision", "asc")
+        self.assertEqual(
+            [item["decision"] for item in ordered], ["allowed", "allowed", "blocked"]
+        )
+
+    def test_sort_by_command(self):
+        ordered = events.sort_events(self.events(), "command", "asc")
+        self.assertEqual([item["command"] for item in ordered], [None, "off", "on"])
+
+    def test_invalid_sort_falls_back(self):
+        ordered = events.sort_events(self.events(), "foo", "bar")
+        self.assertEqual([item["received_ms"] for item in ordered], [3000, 2000, 1000])
+
+    def test_missing_received_ms_uses_ts(self):
+        items = [
+            record(received_ms=None, ts="2026-11-16T09:00:00+00:00"),
+            record(received_ms=None, ts="2026-11-16T09:02:00+00:00"),
+        ]
+        ordered = events.sort_events(items, "ts", "asc")
+        self.assertEqual(ordered[0]["ts"], "2026-11-16T09:00:00+00:00")

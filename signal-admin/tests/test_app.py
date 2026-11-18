@@ -256,6 +256,42 @@ class PageTests(AppTestBase):
     def test_events_page_too_high(self):
         self.assertEqual(self.get("/events?page=99").status, 200)
 
+    def write_events(self):
+        self.log_path.write_text(
+            json.dumps(
+                event(received_ms=1000, ts="2026-11-16T09:00:00+00:00", text="AAA")
+            )
+            + "\n"
+            + json.dumps(
+                event(received_ms=2000, ts="2026-11-16T09:01:00+00:00", text="ZZZ")
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def test_events_default_order_newest_first(self):
+        self.write_events()
+        body = self.get("/events").body.decode("utf-8")
+        self.assertLess(body.index("ZZZ"), body.index("AAA"))
+
+    def test_events_sort_asc(self):
+        self.write_events()
+        body = self.get("/events?sort=ts&dir=asc").body.decode("utf-8")
+        self.assertLess(body.index("AAA"), body.index("ZZZ"))
+
+    def test_events_invalid_sort_falls_back(self):
+        self.assertEqual(self.get("/events?sort=foo&dir=bar").status, 200)
+
+    def test_events_pagination_keeps_sort(self):
+        lines = [
+            json.dumps(event(received_ms=1000 + index, text=f"e{index}"))
+            for index in range(30)
+        ]
+        self.log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        body = self.get("/events?sort=ts&dir=asc").body.decode("utf-8")
+        self.assertIn("sort=ts", body)
+        self.assertIn("dir=asc", body)
+
     def test_event_detail(self):
         record = json.loads(self.log_path.read_text(encoding="utf-8").splitlines()[0])
         response = self.get(f"/events/detail?id={compute_event_id(record)}")
@@ -293,6 +329,14 @@ class PageTests(AppTestBase):
         response = self.get("/static/admin.css")
         self.assertEqual(response.status, 200)
         self.assertEqual(response.headers["Content-Type"], "text/css; charset=utf-8")
+
+    def test_static_js(self):
+        response = self.get("/static/admin.js")
+        self.assertEqual(response.status, 200)
+        self.assertIn("data-select-all", response.body.decode("utf-8"))
+        self.assertEqual(
+            response.headers["Content-Type"], "application/javascript; charset=utf-8"
+        )
 
     def test_static_missing(self):
         self.assertEqual(self.get("/static/fehlt.css").status, 404)
@@ -472,6 +516,32 @@ class MutationTests(AppTestBase):
         record = json.loads(self.log_path.read_text(encoding="utf-8").splitlines()[0])
         response = self.post(
             "/events/delete", {"csrf": self.csrf, "ids": [compute_event_id(record)]}
+        )
+        self.assertEqual(response.status, 200)
+        self.assertEqual(self.log_path.read_text(encoding="utf-8").strip(), "")
+
+    def test_events_delete_all_filtered(self):
+        lines = [
+            json.dumps(event(received_ms=1000 + index, text=f"e{index}"))
+            for index in range(30)
+        ]
+        self.log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        response = self.post(
+            "/events/delete",
+            {"csrf": self.csrf, "select_all": "1", "q": "e1"},
+        )
+        self.assertEqual(response.status, 200)
+        remaining = self.log_path.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(remaining), 19)
+
+    def test_events_delete_all_no_filter(self):
+        lines = [
+            json.dumps(event(received_ms=1000 + index, text=f"e{index}"))
+            for index in range(5)
+        ]
+        self.log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        response = self.post(
+            "/events/delete", {"csrf": self.csrf, "select_all": "1"}
         )
         self.assertEqual(response.status, 200)
         self.assertEqual(self.log_path.read_text(encoding="utf-8").strip(), "")

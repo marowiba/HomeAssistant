@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from html import escape
 from typing import Any
+from urllib.parse import urlencode
 
 NAV = (
     ("dashboard", "/dashboard", "Dashboard"),
@@ -104,6 +105,7 @@ def layout(
         f"{nav_items}</nav></aside>\n"
         f'<main class="content"><h1>{_e(title)}</h1>{_flash(flash, error)}{content}</main></div>\n'
         '<footer class="footer">Signal-Administration · srv001 · lokales Netzwerk</footer>\n'
+        '<script src="/static/admin.js" defer></script>\n'
         "</body>\n</html>"
     )
 
@@ -192,7 +194,7 @@ def allowlist_page(
             f'{" checked" if enabled else ""}> aktiv</label>'
             '<button class="btn" type="submit">Speichern</button></form>'
             '<form method="post" action="/allowlist/delete" class="inline-form" '
-            "onsubmit=\"return confirm('Eintrag wirklich loeschen?');\">"
+            'data-confirm="Eintrag wirklich loeschen?">'
             f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
             f'<input type="hidden" name="index" value="{index}">'
             '<button class="btn btn-danger" type="submit">Löschen</button></form>'
@@ -247,7 +249,7 @@ def commands_page(
             f'{" checked" if enabled else ""}> aktiv</label>'
             '<button class="btn" type="submit">Speichern</button></form>'
             '<form method="post" action="/commands/delete" class="inline-form" '
-            "onsubmit=\"return confirm('Kommando wirklich loeschen?');\">"
+            'data-confirm="Kommando wirklich loeschen?">'
             f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
             f'<input type="hidden" name="command" value="{_e(command_id)}">'
             '<button class="btn btn-danger" type="submit">Löschen</button></form>'
@@ -279,10 +281,40 @@ def commands_page(
     return layout("Kommandos", "commands", content, user, csrf, flash, error)
 
 
+def _sort_link(
+    key: str,
+    label: str,
+    sort_key: str,
+    direction: str,
+    filters: dict[str, str],
+) -> str:
+    active = key == sort_key
+    if active:
+        next_dir = "desc" if direction == "asc" else "asc"
+    else:
+        next_dir = "asc"
+    indicator = ""
+    if active:
+        indicator = " \u25b2" if direction == "asc" else " \u25bc"
+    params = {
+        name: value
+        for name, value in filters.items()
+        if value and name not in ("sort", "dir")
+    }
+    params["sort"] = key
+    params["dir"] = next_dir
+    return (
+        f'<th><a class="sort-link" href="/events?{urlencode(params)}">'
+        f"{_e(label)}{indicator}</a></th>"
+    )
+
+
 def events_page(
     events: list[dict[str, Any]],
     filters: dict[str, str],
     commands: list[dict[str, Any]],
+    sort_key: str,
+    direction: str,
     user: str,
     csrf: str,
     page: int,
@@ -296,7 +328,7 @@ def events_page(
         rows.append(
             "<tr>"
             f'<td><input type="checkbox" name="ids" value="{_e(event.get("_id"))}" '
-            'form="delete-form"></td>'
+            'form="delete-form" data-row-select></td>'
             f"<td>{_e(event.get('ts'))}</td>"
             f"<td>{_e(event.get('sender_name') or event.get('sender_number') or '-')}</td>"
             f"<td>{_e(event.get('text') or '-')}</td>"
@@ -331,9 +363,21 @@ def events_page(
         if page < total_pages
         else ""
     )
+    headers = (
+        '<th><input type="checkbox" data-select-all '
+        'aria-label="Alle gefilterten Ereignisse auswaehlen"></th>'
+        + _sort_link("ts", "Zeit", sort_key, direction, filters)
+        + _sort_link("sender", "Absender", sort_key, direction, filters)
+        + _sort_link("text", "Text", sort_key, direction, filters)
+        + _sort_link("decision", "Entscheidung", sort_key, direction, filters)
+        + _sort_link("command", "Kommando", sort_key, direction, filters)
+        + "<th></th>"
+    )
     content = (
         '<section class="panel"><h2>Filter</h2>'
         '<form class="grid-form" method="get" action="/events">'
+        f'<input type="hidden" name="sort" value="{_e(sort_key)}">'
+        f'<input type="hidden" name="dir" value="{_e(direction)}">'
         f'<label>Suche<input name="q" value="{_e(filters.get("q", ""))}"></label>'
         f'<label>Entscheidung<select name="decision">{options}</select></label>'
         f'<label>Kommando<select name="command">{command_options}</select></label>'
@@ -342,12 +386,20 @@ def events_page(
         '<button class="btn btn-primary" type="submit">Anwenden</button></form></section>'
         f'<section class="panel"><h2>Ereignisse ({total})</h2>'
         '<form id="delete-form" method="post" action="/events/delete" '
-        "onsubmit=\"return confirm('Ausgewaehlte Ereignisse wirklich loeschen?');\">"
+        'data-confirm="Ausgewaehlte Ereignisse wirklich loeschen?" '
+        'data-confirm-all="Alle gefilterten Ereignisse wirklich loeschen?">'
         f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
+        '<input type="hidden" name="select_all" value="0" data-select-all-field>'
+        f'<input type="hidden" name="q" value="{_e(filters.get("q", ""))}">'
+        f'<input type="hidden" name="decision" value="{_e(filters.get("decision", ""))}">'
+        f'<input type="hidden" name="command" value="{_e(filters.get("command", ""))}">'
+        f'<input type="hidden" name="from" value="{_e(filters.get("from", ""))}">'
+        f'<input type="hidden" name="to" value="{_e(filters.get("to", ""))}">'
         '<button class="btn btn-danger" type="submit">Ausgewaehlte loeschen</button></form>'
-        "<table><thead><tr><th></th><th>Zeit</th><th>Absender</th><th>Text</th>"
-        "<th>Entscheidung</th><th>Kommando</th><th></th></tr></thead>"
+        f'<table data-select-scope><thead><tr>{headers}</tr></thead>'
         f"<tbody>{body}</tbody></table>"
+        '<p class="muted">Die Kopf-Checkbox waehlt alle gefilterten Ereignisse aus, '
+        "auch auf anderen Seiten.</p>"
         f'<div class="pager">{prev_link}<span>Seite {page} von {total_pages}</span>'
         f"{next_link}</div></section>"
     )
@@ -355,8 +407,6 @@ def events_page(
 
 
 def _query(filters: dict[str, str], page: int) -> str:
-    from urllib.parse import urlencode
-
     params = {key: value for key, value in filters.items() if value}
     params["page"] = str(page)
     return urlencode(params)
@@ -390,7 +440,7 @@ def event_detail_page(
         '<section class="panel"><h2>Ereignis</h2>'
         f"<table class=\"detail\"><tbody>{rows}</tbody></table>"
         '<form method="post" action="/events/delete" '
-        "onsubmit=\"return confirm('Ereignis wirklich loeschen?');\">"
+        'data-confirm="Ereignis wirklich loeschen?">'
         f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
         f'<input type="hidden" name="ids" value="{_e(event.get("_id"))}">'
         '<button class="btn btn-danger" type="submit">Ereignis loeschen</button></form>'
