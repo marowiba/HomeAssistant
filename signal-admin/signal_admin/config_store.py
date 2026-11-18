@@ -180,6 +180,7 @@ def _atomic_write(path: Path, text: str) -> None:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             handle.write(text)
         os.replace(temporary, path)
+        os.chmod(path, 0o640)
     except BaseException:
         try:
             os.unlink(temporary)

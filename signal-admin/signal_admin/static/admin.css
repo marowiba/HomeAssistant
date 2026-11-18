@@ -212,8 +212,18 @@ input:focus, select:focus, textarea:focus {
   margin: 2px 0;
   flex-wrap: wrap;
 }
-.actions { display: flex; flex-direction: column; gap: 6px; }
+.actions { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; align-items: center; }
 .pager { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+
+table.audit { table-layout: fixed; }
+table.audit th:nth-child(1) { width: 5%; }
+table.audit th:nth-child(2) { width: 14%; }
+table.audit th:nth-child(3) { width: 10%; }
+table.audit th:nth-child(4) { width: 12%; }
+table.audit th:nth-child(5) { width: 32%; }
+table.audit th:nth-child(6) { width: 15%; }
+table.audit th:nth-child(7) { width: 12%; }
+table.audit td { overflow-wrap: anywhere; }
 
 .footer {
   height: 40px;

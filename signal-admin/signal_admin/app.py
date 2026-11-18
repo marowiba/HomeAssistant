@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import logging
 import os
 import socketserver
 import sys
@@ -41,6 +42,7 @@ DASHBOARD_PATH = "/dashboard"
 ALLOWLIST_PATH = "/allowlist"
 NOT_FOUND_MESSAGE = "Seite nicht gefunden"
 DEFAULT_RPC_URL = "http" + "://127.0.0.1:8080/api/v1/rpc"
+LOG = logging.getLogger("signal-admin")
 
 
 @dataclass
@@ -61,6 +63,12 @@ def _redirect(location: str, extra: dict[str, str] | None = None) -> Response:
     if extra:
         headers.update(extra)
     return Response(303, b"", headers)
+
+
+def _error_text(exc: Exception) -> str:
+    if isinstance(exc, OSError):
+        return "Die Konfiguration konnte nicht gespeichert werden (Schreibfehler)."
+    return str(exc)
 
 
 class AdminApp:
@@ -340,8 +348,8 @@ class AdminApp:
                 self._first(form, "enabled") == "1",
             )
             config_store.save_config(self.config_path, updated)
-        except config_store.ConfigError as exc:
-            return self._allowlist(user, csrf, str(exc), True)
+        except (OSError, config_store.ConfigError) as exc:
+            return self._allowlist(user, csrf, _error_text(exc), True)
         self.audit.append(
             user, "allowlist.add", self._first(form, "label"), now=self._now_ts()
         )
@@ -362,8 +370,8 @@ class AdminApp:
                 self._first(form, "enabled") == "1",
             )
             config_store.save_config(self.config_path, updated)
-        except (ValueError, config_store.ConfigError) as exc:
-            return self._allowlist(user, csrf, str(exc), True)
+        except (ValueError, OSError, config_store.ConfigError) as exc:
+            return self._allowlist(user, csrf, _error_text(exc), True)
         self.audit.append(user, "allowlist.update", str(index), now=self._now_ts())
         return _redirect(ALLOWLIST_PATH)
 
@@ -375,8 +383,8 @@ class AdminApp:
             config = self._load_config()
             updated = config_store.delete_allowlist_entry(config, index)
             config_store.save_config(self.config_path, updated)
-        except (ValueError, config_store.ConfigError) as exc:
-            return self._allowlist(user, csrf, str(exc), True)
+        except (ValueError, OSError, config_store.ConfigError) as exc:
+            return self._allowlist(user, csrf, _error_text(exc), True)
         self.audit.append(user, "allowlist.delete", str(index), now=self._now_ts())
         return _redirect(ALLOWLIST_PATH)
 
@@ -406,8 +414,8 @@ class AdminApp:
             config = self._load_config()
             updated = config_store.set_command_enabled(config, command_id, enabled)
             config_store.save_config(self.config_path, updated)
-        except config_store.ConfigError as exc:
-            return self._commands(user, csrf, str(exc), True)
+        except (OSError, config_store.ConfigError) as exc:
+            return self._commands(user, csrf, _error_text(exc), True)
         self.audit.append(
             user,
             "command.toggle",
@@ -516,8 +524,8 @@ class AdminApp:
             config = self._load_config()
             updated = config_store.set_retention(config, days)
             config_store.save_config(self.config_path, updated)
-        except (ValueError, config_store.ConfigError) as exc:
-            return self._settings(user, csrf, str(exc), True)
+        except (ValueError, OSError, config_store.ConfigError) as exc:
+            return self._settings(user, csrf, _error_text(exc), True)
         self.audit.append(
             user, "settings.retention", "retention_days", str(days), now=self._now_ts()
         )
@@ -549,8 +557,8 @@ class AdminApp:
         raw = self._first(form, "backup").encode("utf-8")
         try:
             config_store.restore_config(self.config_path, raw)
-        except config_store.ConfigError as exc:
-            return self._settings(user, csrf, str(exc), True)
+        except (OSError, config_store.ConfigError) as exc:
+            return self._settings(user, csrf, _error_text(exc), True)
         self.audit.append(user, "settings.restore", "config", now=self._now_ts())
         return self._settings(user, csrf, "Konfiguration wiederhergestellt.")
 
@@ -585,7 +593,16 @@ class _RequestHandler(BaseHTTPRequestHandler):
     def _dispatch(self, method: str) -> None:
         length = int(self.headers.get("Content-Length", "0") or "0")
         body = self.rfile.read(length) if length else b""
-        response = self.app.handle(method, self.path, dict(self.headers), body)
+        try:
+            response = self.app.handle(method, self.path, dict(self.headers), body)
+        except Exception:
+            LOG.exception("Unbehandelter Fehler bei %s %s", method, self.path)
+            response = _html(
+                500,
+                templates.error_page(
+                    "Interner Fehler. Bitte den Administrator informieren."
+                ),
+            )
         self.send_response(response.status)
         for key, value in response.headers.items():
             self.send_header(key, value)

@@ -161,7 +161,7 @@ def allowlist_page(
             "onsubmit=\"return confirm('Eintrag wirklich loeschen?');\">"
             f'<input type="hidden" name="csrf" value="{_e(csrf)}">'
             f'<input type="hidden" name="index" value="{index}">'
-            '<button class="btn btn-danger" type="submit">Loeschen</button></form>'
+            '<button class="btn btn-danger" type="submit">Löschen</button></form>'
             "</td></tr>"
         )
     body = "".join(rows) or '<tr><td colspan="5" class="muted">Keine Eintraege.</td></tr>'
@@ -350,7 +350,7 @@ def audit_page(
         chain = _badge(False, "", f"Kette gebrochen ab Eintrag {bad_id}")
     content = (
         f'<section class="panel"><h2>Integritaet</h2><p>{chain}</p></section>'
-        '<section class="panel"><h2>Audit-Log</h2><table><thead><tr>'
+        '<section class="panel"><h2>Audit-Log</h2><table class="audit"><thead><tr>'
         "<th>ID</th><th>Zeit</th><th>Akteur</th><th>Aktion</th><th>Ziel</th>"
         f"<th>Detail</th><th>Hash</th></tr></thead><tbody>{rows}</tbody></table></section>"
     )

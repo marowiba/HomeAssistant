@@ -47,8 +47,9 @@ EOF
 sudo chown root:signal-cli /etc/signal-admin/signal-admin.env
 sudo chmod 0640 /etc/signal-admin/signal-admin.env
 
-# 4. Bridge-Konfiguration fuer signal-cli schreibbar machen
-sudo chown signal-cli:signal-cli /etc/signal-bridge/config.json
+# 4. Bridge-Konfiguration und -Verzeichnis fuer signal-cli schreibbar machen
+sudo chown signal-cli:signal-cli /etc/signal-bridge /etc/signal-bridge/config.json
+sudo chmod 0750 /etc/signal-bridge
 
 # 5. systemd-Dienst
 sudo install -o root -g root -m 0644 /tmp/signal-admin.service /etc/systemd/system/signal-admin.service

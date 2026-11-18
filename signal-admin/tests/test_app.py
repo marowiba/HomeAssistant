@@ -386,6 +386,57 @@ class MutationTests(AppTestBase):
         )
         self.assertEqual(response.status, 403)
 
+    def test_allowlist_add_write_error(self):
+        with mock.patch.object(config_store, "save_config", side_effect=OSError("x")):
+            response = self.post(
+                "/allowlist/add",
+                {"csrf": self.csrf, "label": "Neu", "number": "+49"},
+            )
+        self.assertEqual(response.status, 200)
+        self.assertIn(b"Schreibfehler", response.body)
+
+    def test_allowlist_update_write_error(self):
+        with mock.patch.object(config_store, "save_config", side_effect=OSError("x")):
+            response = self.post(
+                "/allowlist/update",
+                {"csrf": self.csrf, "index": "0", "label": "Neu", "number": "+49"},
+            )
+        self.assertEqual(response.status, 200)
+        self.assertIn(b"Schreibfehler", response.body)
+
+    def test_allowlist_delete_write_error(self):
+        with mock.patch.object(config_store, "save_config", side_effect=OSError("x")):
+            response = self.post(
+                "/allowlist/delete", {"csrf": self.csrf, "index": "0"}
+            )
+        self.assertEqual(response.status, 200)
+        self.assertIn(b"Schreibfehler", response.body)
+
+    def test_commands_toggle_write_error(self):
+        with mock.patch.object(config_store, "save_config", side_effect=OSError("x")):
+            response = self.post(
+                "/commands/toggle",
+                {"csrf": self.csrf, "command": "on", "enabled": "0"},
+            )
+        self.assertEqual(response.status, 200)
+        self.assertIn(b"Schreibfehler", response.body)
+
+    def test_settings_retention_write_error(self):
+        with mock.patch.object(config_store, "save_config", side_effect=OSError("x")):
+            response = self.post(
+                "/settings/retention", {"csrf": self.csrf, "days": "7"}
+            )
+        self.assertEqual(response.status, 200)
+        self.assertIn(b"Schreibfehler", response.body)
+
+    def test_restore_write_error(self):
+        with mock.patch.object(config_store, "save_config", side_effect=OSError("x")):
+            response = self.post(
+                "/restore", {"csrf": self.csrf, "backup": json.dumps(base_config())}
+            )
+        self.assertEqual(response.status, 200)
+        self.assertIn(b"Schreibfehler", response.body)
+
 
 class ClientKeyTests(AppTestBase):
     def test_forwarded(self):
@@ -509,6 +560,27 @@ class HttpHandlerTests(AppTestBase):
             response.read()
             self.assertEqual(response.status, 303)
             conn.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_http_handler_returns_500_on_error(self):
+        handler = type("H", (_RequestHandler,), {"app": self.app})
+        server = app_module._AdminServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            port = server.server_address[1]
+            with mock.patch.object(
+                self.app, "handle", side_effect=RuntimeError("boom")
+            ):
+                conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+                conn.request("GET", "/login")
+                response = conn.getresponse()
+                body = response.read()
+                self.assertEqual(response.status, 500)
+                self.assertIn(b"Interner Fehler", body)
+                conn.close()
         finally:
             server.shutdown()
             server.server_close()

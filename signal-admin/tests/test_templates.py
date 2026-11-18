@@ -41,6 +41,7 @@ class TemplateTests(unittest.TestCase):
         )
         self.assertIn("Allowlist", html)
         self.assertIn("M", html)
+        self.assertIn("Löschen", html)
 
     def test_allowlist_empty(self):
         html = templates.allowlist_page([], "admin", "csrf", "fehler", True)
@@ -90,6 +91,7 @@ class TemplateTests(unittest.TestCase):
             [{"id": 1, "entry_hash": "abcdef"}], True, None, "admin", "csrf"
         )
         self.assertIn("Kette unversehrt", html)
+        self.assertIn('class="audit"', html)
 
     def test_audit_broken(self):
         html = templates.audit_page([], False, 3, "admin", "csrf")
